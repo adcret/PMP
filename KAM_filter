@@ -1,0 +1,661 @@
+import fabio
+import numpy as np
+from skimage.morphology import binary_erosion, binary_dilation, disk, skeletonize, remove_small_objects, binary_opening, dilation
+from scipy.ndimage import label, find_objects, distance_transform_edt
+from skimage.filters import threshold_otsu
+from skimage.feature import canny
+from skimage.measure import regionprops
+import matplotlib.pyplot as plt
+import matplotlib.colors as colors
+from scipy.stats import norm
+
+plt.ion()
+
+# Data location
+file_path = 'D:\\DTU_Project\\data\\'
+
+# Information about pixel size
+pixel_y = 0.203; pixel_x = 0.6575; # effective pixel sizes in mu
+
+# Read in CHI COM data
+chi_file = fabio.open(file_path + '838um_2x_2_05_com_chi_fit15.edf')
+A = chi_file.data
+row_size, col_size = A.shape
+
+# Rotate and mirror in one axis (transpose and flip vertically)
+B1 = A.T
+B = np.flipud(B1)
+
+# Identify NaN pixels (NaN becomes True, otherwise False)
+TF = np.isnan(B)
+
+# Normalize to average orientation for Chi
+ave_chi = np.nanmean(A)  # Compute the average, ignoring NaNs
+Chi_Img = B - ave_chi
+max_chi = np.nanmax(Chi_Img)  # Find max, ignoring NaNs
+
+# Read in PHI COM data
+phi_file = fabio.open(file_path + '838um_2x_2_05_com_phi_fit15.edf')
+A = phi_file.data
+
+# Rotate and mirror for Phi data
+B1 = A.T
+B2 = np.flipud(B1)
+
+# Identify NaN pixels for Phi data
+TF = np.isnan(B2)
+
+# Normalize to average orientation for Phi
+ave_phi = np.nanmean(A)  # Compute the average, ignoring NaNs
+Phi_Img = B2 - ave_phi
+max_phi = np.nanmax(Phi_Img)  # Find max, ignoring NaNs
+
+# Assuming TF is a binary numpy array
+grain1 = ~TF
+
+# Create a disk-shaped structuring element with radius 3
+se = disk(3, strict_radius=True)
+
+# Perform erosion twice
+grain1 = binary_erosion(grain1, se)
+grain1 = binary_erosion(grain1, se)
+
+
+# Perform dilation twice
+grain_mask = binary_dilation(grain1, se)
+grain_mask = binary_dilation(grain_mask, se)
+
+# Set pixels outside the mask to slightly above max values
+Chi_Img[~grain_mask] = max_chi * 1.8
+Phi_Img[~grain_mask] = max_phi * 1.8
+
+# Number of bins for the histogram
+nbins = 20
+
+# Create histograms and Gaussian fits for Chi_Img
+plt.figure()
+masked_chi_values = Chi_Img[grain_mask]
+sigma_chi = np.std(masked_chi_values)
+plt.hist(masked_chi_values, bins=nbins, range=(-0.52, 0.46), density=True, label='Chi', align='left')
+y = np.linspace(-3.5, 4.0, 100)
+f = norm.pdf(y, 0, sigma_chi)
+plt.plot(y, f, linewidth=1.5, label=f'Fit to Chi, std = {sigma_chi:.2f} deg')
+plt.title('Chi and Phi distribution histogram')
+print(f'Sigma of Chi_Img distribution = {sigma_chi} deg')
+
+# Create histograms and Gaussian fits for Phi_Img
+masked_phi_values = Phi_Img[grain_mask]
+sigma_phi = np.std(masked_phi_values)
+plt.hist(masked_phi_values, bins=nbins, range=(-0.44, 0.44), density=True, label='Phi', align='left')
+f = norm.pdf(y, 0, sigma_phi)
+plt.plot(y, f, linewidth=1.5, label=f'Fit to Phi, std = {sigma_phi:.2f} deg')
+print(f'Sigma of Phi_Img distribution = {sigma_phi} deg')
+
+plt.legend()
+plt.xlabel('Degrees')
+
+plt.draw()
+
+# Scale Chi_Img and Phi_Img
+MinChi, MaxChi = np.nanmin(Chi_Img), np.nanmax(Chi_Img)
+Chi_scale = (Chi_Img - MinChi) / (MaxChi - MinChi)
+
+MinPhi, MaxPhi = np.nanmin(Phi_Img), np.nanmax(Phi_Img)
+Phi_scale = (Phi_Img - MinPhi) / (MaxPhi - MinPhi)
+
+# Create RGB image Mosa_Img
+Mosa_Img = np.stack((Chi_scale, Phi_scale, np.ones_like(Chi_scale)), axis=-1)
+
+# Make a copy and handle NaN and value ranges
+mosa = Mosa_Img.copy()
+mosa[np.isnan(mosa)] = 0  # Set NaNs to 0
+mosa[mosa < 0] = 0        # Clamp values below 0 to 0
+mosa[mosa > 1] = 1        # Clamp values above 1 to 1
+
+# Plot Chi_Img the plot uses jet_r to be consistent with the matlab scale
+plt.figure()
+plt.imshow(Chi_Img, extent=[0, pixel_x * row_size, 0, pixel_y * col_size], cmap='copper_r', vmin=-0.3, vmax=0.3)
+plt.colorbar()
+plt.xlabel('x in micrometer')
+plt.ylabel('y in micrometer')
+plt.axis('equal')
+plt.title('Chi values map')
+# Plot Phi_Img the plot uses jet_r to be consistent with the matlab scale
+plt.figure()
+plt.imshow(Phi_Img, extent=[0, pixel_x * row_size, 0, pixel_y * col_size], cmap='copper_r', vmin=-0.3, vmax=0.3)
+plt.colorbar()
+plt.xlabel('x in micrometer')
+plt.ylabel('y in micrometer')
+plt.axis('equal')
+plt.title('Phi values map')
+
+# Plot Mosa_Img
+plt.figure()
+plt.imshow(Mosa_Img, extent=[0, pixel_x * row_size, 0, pixel_y * col_size])
+plt.xlabel('x in micrometer')
+plt.ylabel('y in micrometer')
+plt.axis('equal')
+plt.title('Mosa map HSV')
+
+# Plot mosa (converted to RGB from HSV)
+plt.figure()
+mosa_rgb = colors.hsv_to_rgb(mosa)  # Convert HSV to RGB
+plt.imshow(mosa_rgb, extent=[0, pixel_x * row_size, 0, pixel_y * col_size])
+plt.xlabel('x in micrometer')
+plt.ylabel('y in micrometer')
+plt.axis('equal')
+plt.title('Mosa map RGB')
+
+plt.draw()
+
+kernelSize = 2
+KAM = np.zeros((col_size, row_size))
+
+# Loop over all data points
+for ii in range(col_size):
+    for jj in range(row_size):
+        if grain_mask[ii, jj] == 1:
+            # Define the kernel boundaries
+            iStart = max(ii - kernelSize, 0)
+            iEnd = min(ii + kernelSize, col_size - 1)
+            jStart = max(jj - kernelSize, 0)
+            jEnd = min(jj + kernelSize, row_size - 1)
+
+            # Calculate the kernel difference
+            kernel_diff = np.abs(Chi_Img[iStart:iEnd+1, jStart:jEnd+1] - Chi_Img[ii, jj]) + \
+                          np.abs(Phi_Img[iStart:iEnd+1, jStart:jEnd+1] - Phi_Img[ii, jj])
+            nr_pixels_ROI = (iEnd - iStart + 1) * (jEnd - jStart + 1)
+
+            # Store the average misorientation angle in the KAM map
+            KAM[ii, jj] = np.sum(kernel_diff) / nr_pixels_ROI
+
+
+# Plot the KAM image
+plt.figure()
+plt.imshow(KAM, extent=[0, pixel_x * row_size, 0, pixel_y * col_size], cmap='jet_r', vmin=0, vmax=0.5)
+plt.colorbar()
+plt.xlabel('x in micrometer')
+plt.ylabel('y in micrometer')
+plt.axis('equal')
+plt.title('KAM values map')
+
+# Histogram of KAM values and plot analytical function
+# Here the KAM bins are computed in a way so that the sum of the bins equals 1, this is done to mirror 
+# what we have in matlab when doing: figure; h = histogram(KAM(grain_mask),nbins,'Normalization','probability');
+plt.figure()
+masked_KAM_values = KAM[grain_mask]
+# Calculate the weights for each value in your array to normalize the sum of the bins to 1
+weights = np.ones_like(masked_KAM_values) / len(masked_KAM_values)
+# Include the weights in the histogram function
+plt.hist(masked_KAM_values, bins=300, weights=weights, label='KAM Distribution')
+y = np.arange(0, 1.5, 0.02)
+a, b = 0.236, 18.32  # Fitted values
+f = a * np.exp(-b * y)
+plt.plot(y, f, linewidth=1.5, label='Analytical Function')
+plt.legend()
+plt.title('KAM values histogram')
+
+
+# Create KAM filter and calculate area ratio
+KAM_threshold = 0.043
+KAM_filter = np.zeros_like(KAM, dtype=bool)
+
+# Apply the threshold to create the filter
+KAM_filter[grain_mask & (KAM > KAM_threshold)] = True
+
+# Calculate the area ratio
+area_ratio = np.sum(KAM_filter) / np.sum(grain_mask)
+print(f'KAM mask: percentage in walls {area_ratio * 100:.2f}% with KAM threshold: {KAM_threshold}')
+
+# Morphological operations to get KAM_mask
+se = disk(1)
+KAM2 = binary_erosion(KAM_filter, se)
+KAM_mask = binary_dilation(KAM2, se)
+
+# Plot KAM_mask
+plt.figure()
+plt.imshow(KAM_mask, extent=[0, pixel_x * row_size, 0, pixel_y * col_size])
+plt.colorbar()
+plt.xlabel('x in micrometer')
+plt.ylabel('y in micrometer')
+plt.axis('equal')
+plt.title('KAM mask')
+
+plt.draw()
+
+# Skeletonize the KAM mask
+skel_Img = skeletonize(KAM_mask)
+
+
+# Bridge small gaps in the skeleton
+# se = disk(1, strict_radius= True)
+# skel_Img = binary_dilation(skel_Img, se) 
+# in Python we don't need to bridge the gaps, this is already taken care of in the skeletonize function
+
+# Overlay the skeleton on Chi_Img, Phi_Img, and Mosa_Img
+Chi_Img_overlay = np.where(skel_Img, 0.99, Chi_Img) # This somehow leads to much larger skel....
+Phi_Img_overlay = np.where(skel_Img, 0.99, Phi_Img)
+Mosa_Img_overlay = np.copy(Mosa_Img)
+Mosa_Img_overlay[skel_Img] = [2.5, 2.5, 2.5]  # Assuming Mosa_Img is 3-channel
+
+# Plot Chi_Img_overlay
+plt.figure()
+plt.imshow(Chi_Img_overlay, extent=[0, pixel_x * row_size, 0, pixel_y * col_size], cmap='jet_r', vmin=-0.16, vmax=0.15)
+plt.colorbar()
+plt.xlabel('x in micrometer')
+plt.ylabel('y in micrometer')
+plt.axis('equal')
+plt.title('KAM skeleton overlay on Chi map')
+
+# Plot Phi_Img_overlay
+plt.figure()
+plt.imshow(Phi_Img_overlay, extent=[0, pixel_x * row_size, 0, pixel_y * col_size], cmap='jet_r', vmin=-0.16, vmax=0.15)
+plt.colorbar()
+plt.xlabel('x in micrometer')
+plt.ylabel('y in micrometer')
+plt.axis('equal')
+plt.title('KAM skeleton overlay on Phi map')
+
+# Plot Mosa_Img_overlay
+plt.figure()
+plt.imshow(Mosa_Img_overlay, extent=[0, pixel_x * row_size, 0, pixel_y * col_size])
+plt.xlabel('x in micrometer')
+plt.ylabel('y in micrometer')
+plt.axis('equal')
+plt.title('KAM skeleton overlay on Mosa map')
+
+mosa1 = colors.hsv_to_rgb(mosa)  # Convert HSV to RGB
+# Overlay skeleton on Mosa overlay and plot
+Mosa_overlay = np.copy(mosa1)  # Assuming mosa is in RGB format
+Mosa_overlay[skel_Img] = [0, 0, 0]
+plt.figure()
+plt.imshow(Mosa_overlay, extent=[0, pixel_x * row_size, 0, pixel_y * col_size])
+plt.xlabel('x in micrometer')
+plt.ylabel('y in micrometer')
+plt.axis('equal')
+plt.title('KAM skeleton overlay on Mosa map with highlighted skeleton')
+
+plt.draw()
+
+
+# Read in FWHM data for Chi
+chi_fwhm_file = fabio.open(file_path + '838um_2x_2_05_fwhm_chi_fit15.edf')
+A = chi_fwhm_file.data
+B1 = A.T
+B = np.flipud(B1)
+B[~grain_mask] = 2  # Apply grain mask and set outside values to 2
+FWHM_Chi = np.minimum(np.abs(B), 2)
+
+# Read in FWHM data for Phi
+phi_fwhm_file = fabio.open(file_path + '838um_2x_2_05_fwhm_phi_fit15.edf')
+A = phi_fwhm_file.data
+B1 = A.T
+B = np.flipud(B1)
+B[~grain_mask] = 2  # Apply grain mask and set outside values to 2
+FWHM_Phi = np.minimum(np.abs(B), 2)
+
+# Calculate the FWHM image
+FWHM_Img = FWHM_Chi + FWHM_Phi
+FWHM_Img[FWHM_Img > 4] = 4  # Cap the values at 4
+
+# Plot FWHM_Img
+plt.figure()
+plt.imshow(FWHM_Img, extent=[0, pixel_x * row_size, 0, pixel_y * col_size], cmap='viridis', vmin=0, vmax=2)
+plt.colorbar()
+plt.xlabel('x in micrometer')
+plt.ylabel('y in micrometer')
+plt.axis('equal')
+plt.title('FWHM values map')
+
+# Display mean and standard deviation of FWHM_Img within grain mask
+masked_FWHM = FWHM_Img[grain_mask]
+mean_FWHM = np.mean(masked_FWHM)
+std_FWHM = np.std(masked_FWHM)
+print(f'Mean of FWHM_Img is {mean_FWHM}')
+print(f'Std of FWHM_Img is {std_FWHM}')
+
+# Plot histogram of FWHM_Img within grain mask
+plt.figure()
+plt.hist(masked_FWHM, bins=300, density=True)
+plt.xlabel('FWHM value')
+plt.ylabel('Probability Density')
+plt.draw()
+plt.title('FWHM values histogram')
+
+# Define kernel size and threshold
+kernelSize = 2
+FWHM_mask_threshold = 0.25
+
+# Initialize FWHM filter and counters
+FWHM_filter = np.zeros((col_size, row_size))
+kk = 0
+ll = 0
+
+# Generate FWHM filter
+for ii in range(col_size):
+    for jj in range(row_size):
+        if grain_mask[ii, jj]:
+            kk += 1
+            iStart = max(ii - kernelSize, 0)
+            iEnd = min(ii + kernelSize, col_size)
+            jStart = max(jj - kernelSize, 0)
+            jEnd = min(jj + kernelSize, row_size)
+
+            kernel_sum = np.sum(FWHM_Img[iStart:iEnd, jStart:jEnd])
+            nr_pixels_ROI = (iEnd - iStart) * (jEnd - jStart)
+            kernel_ave = kernel_sum / nr_pixels_ROI
+
+            if kernel_ave > FWHM_mask_threshold:
+                FWHM_filter[ii, jj] = 1
+                ll += 1
+
+# Calculate area ratio
+area_ratio = ll / kk
+print(f'FWHM mask: percentage in walls {area_ratio * 100:.2f}% with FWHM threshold: {FWHM_mask_threshold}')
+
+# Enhance grain boundaries
+se = disk(1)
+Edge_Img = binary_dilation(canny(grain_mask), se)
+FWHM_filter[Edge_Img] = 1
+
+# Morphological operations on FWHM_filter
+FWHMF2 = binary_erosion(FWHM_filter, se)
+FWHM_mask = binary_dilation(FWHMF2, se)
+
+# Plot FWHM_mask
+plt.figure()
+plt.imshow(FWHM_mask, extent=[0, pixel_x * row_size, 0, pixel_y * col_size])
+plt.colorbar()
+plt.xlabel('x in micrometer')
+plt.ylabel('y in micrometer')
+plt.axis('equal')
+plt.draw()
+plt.title('FWHM mask')
+
+# Skeletonize the FWHM Mask
+skel_Img1 = skeletonize(FWHM_mask)
+skel_Img1_expanded = skel_Img1[..., np.newaxis]
+# skel_Img1 = remove_small_objects(skel_Img1, min_size=2)  # 'spur' equivalent
+
+# Overlay the skeleton on FWHM_Img
+# FWHM_Img_overlay = np.copy(FWHM_Img)
+FWHM_Img_overlay = np.where(skel_Img1, 2.5, FWHM_Img)
+
+# Overlay the skeleton on Mosa_Img (assuming mosa is in HSV format)
+Mosa = colors.hsv_to_rgb(mosa)  # Convert HSV to RGB
+Mosa_overlay = np.where(skel_Img1_expanded, [0, 0, 0], Mosa)
+
+# Plot Mosa_Img with overlay
+plt.figure()
+plt.imshow(Mosa_overlay, extent=[0, pixel_x * row_size, 0, pixel_y * col_size])
+plt.xlabel('x in micrometer')
+plt.ylabel('y in micrometer')
+plt.axis('equal')
+plt.title('FWHM skeleton overlay on Mosa')
+
+# Plot FWHM_Img with overlay
+plt.figure()
+plt.imshow(FWHM_Img_overlay, extent=[0, pixel_x * row_size, 0, pixel_y * col_size], cmap='jet', vmin=-1.5, vmax=2.5)
+plt.xlabel('x in micrometer')
+plt.ylabel('y in micrometer')
+plt.axis('equal')
+plt.title('FWHM skeleton overlay on FWHM map')
+plt.draw()
+
+# Invert and dilate the skeleton image
+BW_img = ~binary_dilation(skel_Img, disk(1))
+
+# Label connected components
+labeled_array, num_features = label(BW_img)
+nr_cells = num_features  # Adjust for the exterior being labeled as a cell num_features - 1
+print(f"Number of cells: {nr_cells}")
+
+# Get region properties
+props = regionprops(labeled_array)
+
+min_cell_size = 2  # minimum size in pixel for a cell to be considered
+
+mask = np.all(mosa == [1, 1, 1], axis=-1)
+
+# Dilate the mask to also exclude the neighbors
+erroded_mask = binary_erosion(mask, disk(3))
+dilated_mask = binary_erosion(erroded_mask, disk(3))
+dilated_mask = binary_dilation(dilated_mask, disk(3))
+dilated_mask = binary_dilation(dilated_mask, disk(20))
+
+
+# List to store the properties of regions that do not overlap with the mask
+filtered = []
+filtered_props = []
+
+# Iterate over each region in props
+for region in props:
+    # Get the coordinates of the region
+    region_coords = region.coords
+
+    # Check if any of the coordinates overlap with the mask
+    overlap = np.any(erroded_mask[region_coords[:, 0], region_coords[:, 1]])
+
+    # If there is no overlap and the region meets the size criteria, add it to the list
+    if not overlap and region.area >= min_cell_size:
+        filtered.append(region)
+
+# Iterate over each region in props
+for region in filtered:
+    # Get the coordinates of the region
+    region_coords = region.coords
+
+    # Check if any of the coordinates overlap with the mask
+    overlap = np.any(dilated_mask[region_coords[:, 0], region_coords[:, 1]])
+    if not overlap:
+        filtered_props.append(region)
+
+
+
+nr_cells1 = len(filtered_props)
+
+print(f"Number of cells: {nr_cells1}")
+
+# Calculate areas and centroids
+areas_all = [prop.area * pixel_x * pixel_y for prop in props][0:] 
+areas_all1 = [prop.area * pixel_x * pixel_y for prop in filtered_props][0:] # Skip exterior [1:]
+size_from_area = np.sqrt(areas_all)
+size_from_area1 = np.sqrt(areas_all1)
+
+# Plot histogram of cell sizes
+plt.figure()
+plt.hist(size_from_area, bins=100, range=(0.0, 15.0))
+plt.xlabel('From areas: size in mu')
+plt.title('Cell size histogram')
+plt.draw()
+# Plot histogram of cell sizes
+plt.figure()
+plt.hist(size_from_area1, bins=100, range=(0.0, 15.0))
+plt.xlabel('From areas: size in mu')
+plt.title('Cell size histogram')
+plt.draw()
+
+# Display mean and median size
+mean_size = np.mean(size_from_area)
+median_size = np.median(size_from_area)
+print(f"Mean: {mean_size} mu, Median: {median_size} mu")
+# Display mean and median size
+mean_size1 = np.mean(size_from_area1)
+median_size1 = np.median(size_from_area1)
+print(f"Mean: {mean_size1} mu, Median: {median_size1} mu")
+
+
+
+# Plot centroids on the skeletonized image
+centroids = np.array([prop.centroid for prop in props])[0:]  # Skip exterior [1:]
+plt.figure()
+plt.imshow(skel_Img, cmap='gray')
+plt.imshow(mosa_rgb)
+plt.scatter(centroids[:, 1], centroids[:, 0], c='black', s=1)  # Scatter plot
+plt.xlabel('x in pixel')
+plt.ylabel('y in pixel')
+plt.title('Centroid on skeletonized image')
+plt.draw()
+
+centroids1 = np.array([prop.centroid for prop in filtered_props])[0:]  # Skip exterior [1:]
+plt.figure()
+plt.imshow(skel_Img, cmap='gray')
+plt.imshow(mosa_rgb)
+plt.scatter(centroids1[:, 1], centroids1[:, 0], c='black', s=1)  # Scatter plot
+plt.xlabel('x in pixel')
+plt.ylabel('y in pixel')
+plt.title('Centroid on skeletonized image')
+plt.draw()
+
+# Create and plot the Cell_Img
+Cell_Img = np.copy(Mosa_Img)
+for ii in range(1, nr_cells):  # Skip exterior nr_cells + 1
+    cellPixels = props[ii].coords
+    cell_ave_Chi = np.mean(Mosa_Img[cellPixels[:, 0], cellPixels[:, 1], 0])
+    cell_ave_Phi = np.mean(Mosa_Img[cellPixels[:, 0], cellPixels[:, 1], 1])
+    for row, col in cellPixels:
+        Cell_Img[row, col, 0] = cell_ave_Chi
+        Cell_Img[row, col, 1] = cell_ave_Phi
+        Cell_Img[row, col, 2] = 0  # Set blue channel to 0
+
+Cell_Img1 = np.ones_like(Mosa_Img)
+for ii in range(1, nr_cells1):  # Skip exterior nr_cells + 1
+    cellPixels = filtered_props[ii].coords
+    cell_ave_Chi = np.mean(Mosa_Img[cellPixels[:, 0], cellPixels[:, 1], 0])
+    cell_ave_Phi = np.mean(Mosa_Img[cellPixels[:, 0], cellPixels[:, 1], 1])
+    for row, col in cellPixels:
+        Cell_Img1[row, col, 0] = cell_ave_Chi
+        Cell_Img1[row, col, 1] = cell_ave_Phi
+        Cell_Img1[row, col, 2] = 0  # Set blue channel to 0
+
+# Overlay on skeletonized image
+Cell_Img[skel_Img] = [0, 0, 0]
+Cell_Img1[skel_Img] = [0, 0, 0]
+
+# Plot the Cell_Img
+plt.figure()
+plt.imshow(Cell_Img, extent=[0, pixel_x * row_size, 0, pixel_y * col_size])
+plt.xlabel('x in micrometer')
+plt.ylabel('y in micrometer')
+plt.title('Cells and skeleton')
+plt.draw()
+
+# Plot the Cell_Img
+plt.figure()
+plt.imshow(Cell_Img1, extent=[0, pixel_x * row_size, 0, pixel_y * col_size])
+plt.xlabel('x in micrometer')
+plt.ylabel('y in micrometer')
+plt.title('Cells and skeleton')
+plt.draw()
+
+
+
+
+# Initialize an adjacency list
+neighbors_dict = {prop.label: set() for prop in filtered_props}
+
+# Create a distance transform of the skeletonized image
+# Assuming skel_Img is a binary image of the skeleton
+dist_transform = distance_transform_edt(~skel_Img)
+
+# Define a threshold for what you consider "neighboring"
+threshold_distance = 2 # This is an arbitrary value, adjust as needed
+
+# Iterate over each region's bounding box
+for prop in filtered_props:
+    # Get the bounding box of the region and dilate it
+    minr, minc, maxr, maxc = prop.bbox
+    bbox_dilated = dilation(labeled_array[minr:maxr, minc:maxc], disk(1))
+
+    # Find unique region labels within the dilated bounding box
+    unique_labels = np.unique(bbox_dilated)
+
+    # Add labels to the neighbor list, excluding the region itself
+    neighbors_dict[prop.label].update(label for label in unique_labels if label != prop.label and label > 0)
+
+
+# Store the differences
+chi_differences = []
+phi_differences = []
+
+# Loop through each cell in the filtered properties list
+# Ensure that you're iterating over actual cell IDs
+for cell_props in filtered_props:
+    cell_id = cell_props.label
+    cell_ave_Chi = np.mean(Mosa_Img[cell_props.coords[:, 0], cell_props.coords[:, 1], 0])
+    cell_ave_Phi = np.mean(Mosa_Img[cell_props.coords[:, 0], cell_props.coords[:, 1], 1])
+
+    # Make sure to only look at neighbors that are in the dictionary
+    if cell_id in neighbors_dict:
+        for neighbor_id in neighbors_dict[cell_id]:
+            # Check if the neighbor_id corresponds to a valid region in filtered_props
+            neighbor_props = next((prop for prop in filtered_props if prop.label == neighbor_id), None)
+            if neighbor_props:
+                neighbor_ave_Chi = np.mean(Mosa_Img[neighbor_props.coords[:, 0], neighbor_props.coords[:, 1], 0])
+                neighbor_ave_Phi = np.mean(Mosa_Img[neighbor_props.coords[:, 0], neighbor_props.coords[:, 1], 1])
+
+                # Calculate differences and add to the lists
+                chi_diff = (cell_ave_Chi - neighbor_ave_Chi)
+                phi_diff = (cell_ave_Phi - neighbor_ave_Phi)
+                chi_diff = chi_diff * (MaxChi - MinChi) + MinChi
+                phi_diff = phi_diff * (MaxPhi - MinPhi) + MinPhi
+                chi_differences.append(chi_diff)
+                phi_differences.append(phi_diff)
+
+
+
+# Plotting the scatter plot
+plt.figure()
+plt.scatter(chi_differences, phi_differences, alpha=0.5, s=10)
+plt.xlabel('Difference in Chi Orientation')
+plt.ylabel('Difference in Phi Orientation')
+plt.title('Orientation Differences Between Each Cell and Its Neighbors')
+plt.draw()
+
+
+# Initialize dictionaries to store the total differences and count of neighbors
+chi_differences_sum = {cell.label: 0 for cell in filtered_props}
+phi_differences_sum = {cell.label: 0 for cell in filtered_props}
+neighbors_count = {cell.label: 0 for cell in filtered_props}
+
+# Calculate the total differences for Chi and Phi orientations
+for cell_props in filtered_props:
+    cell_id = cell_props.label
+    cell_ave_Chi = np.mean(Mosa_Img[cell_props.coords[:, 0], cell_props.coords[:, 1], 0])
+    cell_ave_Phi = np.mean(Mosa_Img[cell_props.coords[:, 0], cell_props.coords[:, 1], 1])
+
+    if cell_id in neighbors_dict:
+        for neighbor_id in neighbors_dict[cell_id]:
+            neighbor_props = next((prop for prop in filtered_props if prop.label == neighbor_id), None)
+            if neighbor_props:
+                neighbor_ave_Chi = np.mean(Mosa_Img[neighbor_props.coords[:, 0], neighbor_props.coords[:, 1], 0])
+                neighbor_ave_Phi = np.mean(Mosa_Img[neighbor_props.coords[:, 0], neighbor_props.coords[:, 1], 1])
+                
+                neighbor_ave_Chi = neighbor_ave_Chi * (MaxChi - MinChi) + MinChi
+                neighbor_ave_Phi = neighbor_ave_Phi * (MaxPhi - MinPhi) + MinPhi
+
+                # Sum the differences
+                chi_differences_sum[cell_id] += (cell_ave_Chi - neighbor_ave_Chi)
+                phi_differences_sum[cell_id] += (cell_ave_Phi - neighbor_ave_Phi)
+                neighbors_count[cell_id] += 1
+
+# Now calculate the averages and prepare the data for plotting
+chi_differences_avg = [chi_differences_sum[cell_id] / neighbors_count[cell_id] for cell_id in neighbors_count if neighbors_count[cell_id] > 0]
+phi_differences_avg = [phi_differences_sum[cell_id] / neighbors_count[cell_id] for cell_id in neighbors_count if neighbors_count[cell_id] > 0]
+
+
+
+
+
+
+# Plotting the scatter plot with averages
+plt.figure()
+plt.scatter(chi_differences_avg, phi_differences_avg, alpha=0.5, s=10)
+plt.xlabel('Average Difference in Chi Orientation')
+plt.ylabel('Average Difference in Phi Orientation')
+plt.title('Average Orientation Differences Between Each Cell and Its Neighbors')
+plt.draw()
+
+plt.ioff() 
+
+plt.show()
