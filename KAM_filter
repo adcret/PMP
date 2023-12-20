@@ -13,14 +13,19 @@ from IPython.display import display
 import ipywidgets as widgets
 import time 
 from rtree import index
-
-
+from matplotlib.widgets import Slider
+from skimage.morphology import binary_erosion, binary_dilation, disk, skeletonize
+from scipy.ndimage import label
+from scipy.stats import norm
+from scipy.optimize import curve_fit
+import time 
+from rtree import index
 
 
 plt.ion()
 
-# Data locationle
-file_path = 'D:\\DTU_Project\\data\\'
+# Data location
+file_path = 'C:\\Users\\adacre\\Documents\\DTU_Project\\data\\'
 
 # Information about pixel size
 pixel_y = 0.203; pixel_x = 0.6575; # effective pixel sizes in mu
@@ -284,7 +289,7 @@ plt.axis('equal')
 plt.title('KAM skeleton overlay on Mosa map with highlighted skeleton')
 
 plt.draw()
-
+plt.show()
 
 # Read in FWHM data for Chi
 chi_fwhm_file = fabio.open(file_path + '838um_2x_2_05_fwhm_chi_fit15.edf')
@@ -410,6 +415,8 @@ plt.axis('equal')
 plt.title('FWHM skeleton overlay on FWHM map')
 plt.draw()
 
+plt.show()
+
 # Invert and dilate the skeleton image
 BW_img = ~binary_dilation(skel_Img, disk(1))
 
@@ -472,13 +479,13 @@ size_from_area1 = np.sqrt(areas_all1)
 
 # Plot histogram of cell sizes
 plt.figure()
-plt.hist(size_from_area, bins=100, range=(0.0, 15.0))
+plt.hist(size_from_area, bins=100, range=(0.0, 25.0))
 plt.xlabel('From areas: size in mu')
 plt.title('Cell size histogram')
 plt.draw()
 # Plot histogram of cell sizes
 plt.figure()
-plt.hist(size_from_area1, bins=100, range=(0.0, 15.0))
+plt.hist(size_from_area1, bins=100, range=(0.0, 25.0))
 plt.xlabel('From areas: size in mu')
 plt.title('Cell size histogram')
 plt.draw()
@@ -556,42 +563,14 @@ plt.ylabel('y in micrometer')
 plt.title('Cells and skeleton')
 plt.draw()
 
+plt.show()
 
 
 # Initialize an empty set for each cell in the neighbors_dict
 neighbors_dict = {prop.label: set() for prop in filtered_props}
-t0 = time.time()
 
-# Iterate over each cell to create its mask and dilate it
-# for prop in filtered_props:
-#     # Initialize mask for the current cell
-#     mask = np.zeros(labeled_array.shape, dtype=bool)
-#     # Set the coordinates of the current cell in the mask
-#     mask[prop.coords[:, 0], prop.coords[:, 1]] = True
-#     # Dilate the mask for the current cell
-#     dilated_mask = binary_dilation(mask, disk(5))  # The disk size can be adjusted
+t0 = time.time() # Measure the time it takes to compute
 
-#     # Check the dilated mask against all other cells
-#     for other_prop in filtered_props:
-#         if other_prop.label == prop.label:
-#             # Skip the current cell
-#             continue
-
-#         # Check if there is any overlap between the dilated mask and other cells
-#         overlap = np.any(dilated_mask[other_prop.coords[:, 0], other_prop.coords[:, 1]])
-        
-#         # If there's an overlap, add the other cell's label to the neighbors set
-#         if overlap:
-#             neighbors_dict[prop.label].add(other_prop.label)
-#             neighbors_dict[other_prop.label].add(prop.label)  # Add the relationship in both directions
-# t1 = time.time()
-
-# elapsed = t1-t0
-
-# print(f'Elapsed time: {elapsed}')
-
-
-t0 = time.time()
 # Function to compute the bounding box from coordinates
 def compute_bbox(coords):
     min_y, min_x = np.min(coords, axis=0)
@@ -601,21 +580,22 @@ def compute_bbox(coords):
 # Create an R-tree index
 idx = index.Index()
 
-# Populate the index with cell bounding boxes
-for i, prop in enumerate(filtered_props):
-    bbox = compute_bbox(prop.coords)
-    idx.insert(i, bbox)  # (min_x, min_y, max_x, max_y)
-
-# Iterate over each cell to create its mask and dilate it
+# Precompute masks and populate the index with cell bounding boxes
+masks = []
 for i, prop in enumerate(filtered_props):
     mask = np.zeros(labeled_array.shape, dtype=bool)
     mask[prop.coords[:, 0], prop.coords[:, 1]] = True
-    dilated_mask = binary_dilation(mask, disk(5))
+    masks.append(mask)
+    
+    bbox = compute_bbox(prop.coords)
+    idx.insert(i, bbox)  # (min_x, min_y, max_x, max_y)
 
-    # Compute the bounding box for the dilated mask
+# Dilate all masks at once
+dilated_masks = [binary_dilation(mask, disk(5)) for mask in masks]
+
+# Iterate over each cell and its dilated mask
+for i, (prop, dilated_mask) in enumerate(zip(filtered_props, dilated_masks)):
     dilated_bbox = compute_bbox(np.argwhere(dilated_mask))
-
-    # Expand the bbox slightly to account for the dilation
     expanded_bbox = (dilated_bbox[0]-5, dilated_bbox[1]-5, dilated_bbox[2]+5, dilated_bbox[3]+5)
 
     # Query for nearby cells
@@ -626,59 +606,75 @@ for i, prop in enumerate(filtered_props):
             continue
 
         other_prop = filtered_props[j]
+        other_bbox = compute_bbox(other_prop.coords)
 
-        overlap = np.any(dilated_mask[other_prop.coords[:, 0], other_prop.coords[:, 1]])
-        if overlap:
-            neighbors_dict[prop.label].add(other_prop.label)
-            neighbors_dict[other_prop.label].add(prop.label)
+        # Check if bounding boxes overlap
+        if not (other_bbox[2] < expanded_bbox[0] or other_bbox[0] > expanded_bbox[2] or 
+                other_bbox[3] < expanded_bbox[1] or other_bbox[1] > expanded_bbox[3]):
+            if np.any(dilated_mask[other_prop.coords[:, 0], other_prop.coords[:, 1]]):
+                neighbors_dict[prop.label].add(other_prop.label)
+                neighbors_dict[other_prop.label].add(prop.label)
 
 
 t1 = time.time()
 elapsed = t1-t0
-print(f'Elapsed time: {elapsed}')         
+print(f'Elapsed time: {elapsed}')     # Time it takes to compute    
 
-# Function to visualize a cell and its neighbors
-def plot_cells_and_neighbors(cell_id):
-    # Create a mask for the selected cell
+def plot_cells_and_neighbors(cell_id, ax):
+    ax.clear()  # Clear the current axes
+
+    # Create masks for the cell and its neighbors
     cell_mask = (labeled_array == cell_id)
+    neighbors_mask = np.zeros_like(cell_mask, dtype=bool)
 
-    # Include neighbors in the mask
     neighbors = neighbors_dict.get(cell_id, [])
     for neighbor_id in neighbors:
-        cell_mask |= (labeled_array == neighbor_id)
-    
-    # Plot the mask
-    plt.imshow(cell_mask, cmap='hot')
-    plt.axis('off')  # Hide axis for better visualization
-    plt.show()
+        neighbors_mask |= (labeled_array == neighbor_id)
 
-# Create a slider widget
-cell_id_slider = widgets.IntSlider(
-    min=1, 
-    max=max(neighbors_dict.keys()),  # Set the max to the highest cell label
-    step=1, 
-    value=1, 
-    description='Cell ID:'  # Optional: add a description to the slider
-)
+    # Create an RGBA image for the masks with transparency
+    cell_mask_rgba = np.zeros((*cell_mask.shape, 4))
+    neighbors_mask_rgba = np.zeros((*neighbors_mask.shape, 4))
 
-# Create an interactive output widget
-output = widgets.interactive_output(
-    plot_cells_and_neighbors, 
-    {'cell_id': cell_id_slider}
-)
+    # Set RGBA for cell mask (red color)
+    cell_mask_rgba[cell_mask, :3] = [1, 0, 0]  # Red color
+    cell_mask_rgba[cell_mask, 3] = 0.7  # Alpha for transparency
 
-# Layout adjustments (optional)
-slider_layout = widgets.Layout(width='50%')  # Adjust the width of the slider
-cell_id_slider.layout = slider_layout
+    # Set RGBA for neighbors mask (blue color)
+    neighbors_mask_rgba[neighbors_mask, :3] = [0, 0, 1]  # Blue color
+    neighbors_mask_rgba[neighbors_mask, 3] = 0.7  # Alpha for transparency
 
-# Display the slider and the output widget
-display(cell_id_slider, output)
+    # Plot the original image
+    ax.imshow(Cell_Img1, cmap='jet', alpha=0.7)
+    # Overlay the cell mask
+    ax.imshow(cell_mask_rgba)
+    # Overlay the neighbors mask
+    ax.imshow(neighbors_mask_rgba)
+
+    ax.axis('off')
+
+# Set up the figure
+fig, ax = plt.subplots()
+plt.subplots_adjust(left=0.1, bottom=0.25)
+
+# Position of the slider
+ax_slider = plt.axes([0.1, 0.1, 0.8, 0.03])
+slider = Slider(ax_slider, 'Cell ID', 1, max(neighbors_dict.keys()), valinit=1, valstep=1)
+
+# Update the plot when the slider value changes
+def update(val):
+    plot_cells_and_neighbors(int(val), ax)
+    fig.canvas.draw_idle()
+
+slider.on_changed(update)
+
+# Initial plot
+plot_cells_and_neighbors(1, ax)
+
+plt.show()
 
 # Initialize lists to store differences
 chi_differences = []
 phi_differences = []
-num_neighbors = 0
-
 
 # Loop through each cell in the filtered properties list
 # for cell_props in filtered_props:
@@ -711,8 +707,10 @@ num_neighbors = 0
 
 
 # Precompute the average Chi and Phi for each cell
-ave_Chi = {prop.label: np.mean(Mosa_Img[prop.coords[:, 0], prop.coords[:, 1], 0]) for prop in filtered_props}
-ave_Phi = {prop.label: np.mean(Mosa_Img[prop.coords[:, 0], prop.coords[:, 1], 1]) for prop in filtered_props}
+# Now you can calculate the averages using Chi_Img and Phi_Img that have not been scaled for RGB values, true data
+ave_Chi = {prop.label: np.mean(Chi_Img[prop.coords[:, 0], prop.coords[:, 1]]) for prop in filtered_props}
+ave_Phi = {prop.label: np.mean(Phi_Img[prop.coords[:, 0], prop.coords[:, 1]]) for prop in filtered_props}
+
 
 chi_differences = []
 phi_differences = []
@@ -725,7 +723,7 @@ for cell_props in filtered_props:
     cell_ave_Phi = ave_Phi[cell_id]
 
     # Only look at neighbors that are in the dictionary and have a greater label
-    neighbor_ids = [n_id for n_id in neighbors_dict.get(cell_id, []) if n_id > cell_id]
+    neighbor_ids = [n_id for n_id in neighbors_dict.get(cell_id, []) if n_id > cell_id] 
 
     for neighbor_id in neighbor_ids:
         num_neighbors += 1
@@ -733,8 +731,8 @@ for cell_props in filtered_props:
         neighbor_ave_Phi = ave_Phi[neighbor_id]
 
         # Calculate the differences and scale them
-        chi_diff = (cell_ave_Chi - neighbor_ave_Chi) * (MaxChi - MinChi) + MinChi
-        phi_diff = (cell_ave_Phi - neighbor_ave_Phi) * (MaxPhi - MinPhi) + MinPhi
+        chi_diff = (cell_ave_Chi - neighbor_ave_Chi) 
+        phi_diff = (cell_ave_Phi - neighbor_ave_Phi) 
 
         # Add the differences to the lists
         chi_differences.append(chi_diff)
@@ -751,45 +749,6 @@ plt.ylabel('Difference in Phi Orientation')
 plt.title('Orientation Differences Between Each Cell and Its Neighbors')
 plt.draw()
 
-
-# Initialize dictionaries to store the total differences and count of neighbors
-# chi_differences_sum = {cell.label: 0 for cell in filtered_props}
-# phi_differences_sum = {cell.label: 0 for cell in filtered_props}
-# neighbors_count = {cell.label: 0 for cell in filtered_props}
-
-# Calculate the total differences for Chi and Phi orientations
-# for cell_props in filtered_props:
-#     cell_id = cell_props.label
-#     cell_ave_Chi = np.mean(Mosa_Img[cell_props.coords[:, 0], cell_props.coords[:, 1], 0])
-#     cell_ave_Phi = np.mean(Mosa_Img[cell_props.coords[:, 0], cell_props.coords[:, 1], 1])
-
-#     if cell_id in neighbors_dict:
-#         for neighbor_id in neighbors_dict[cell_id]:
-#             neighbor_props = next((prop for prop in filtered_props if prop.label == neighbor_id), None)
-#             if neighbor_props:
-#                 neighbor_ave_Chi = np.mean(Mosa_Img[neighbor_props.coords[:, 0], neighbor_props.coords[:, 1], 0])
-#                 neighbor_ave_Phi = np.mean(Mosa_Img[neighbor_props.coords[:, 0], neighbor_props.coords[:, 1], 1])
-                
-#                 neighbor_ave_Chi = neighbor_ave_Chi * (MaxChi - MinChi) + MinChi
-#                 neighbor_ave_Phi = neighbor_ave_Phi * (MaxPhi - MinPhi) + MinPhi
-
-#                 # Sum the differences
-#                 chi_differences_sum[cell_id] += (cell_ave_Chi - neighbor_ave_Chi)
-#                 phi_differences_sum[cell_id] += (cell_ave_Phi - neighbor_ave_Phi)
-#                 neighbors_count[cell_id] += 1
-
-# Now calculate the averages and prepare the data for plotting
-# chi_differences_avg = [chi_differences_sum[cell_id] / neighbors_count[cell_id] for cell_id in neighbors_count if neighbors_count[cell_id] > 0]
-# phi_differences_avg = [phi_differences_sum[cell_id] / neighbors_count[cell_id] for cell_id in neighbors_count if neighbors_count[cell_id] > 0]
-
-
-# Plotting the scatter plot with averages
-# plt.figure()
-# plt.scatter(chi_differences_avg, phi_differences_avg, alpha=0.5, s=10)
-# plt.xlabel('Average Difference in Chi Orientation')
-# plt.ylabel('Average Difference in Phi Orientation')
-# plt.title('Average Orientation Differences Between Each Cell and Its Neighbors')
-# plt.draw()
 
 # Create a grid for the contour plot
 x_edges = np.linspace(min(chi_differences), max(chi_differences), 50)
@@ -827,11 +786,12 @@ initial_guess = [1, 0, 0, 1, 1, 0, 0]  # Define the initial guess for the parame
 Z = H.T
 
 # Perform the fit
-popt, pcov = curve_fit(gaussian, [X.ravel(), Y.ravel()], Z.ravel(), p0=initial_guess)
+popt, pcov = curve_fit(gaussian, [X.ravel(), Y.ravel()], Z.ravel(), p0=initial_guess, bounds=(0, np.inf))
 
 # Plot the fitted Gaussian
 plt.figure()
 plt.contourf(X, Y, H.T, levels=100, cmap='viridis')
+plt.colorbar(label='Count')
 plt.contour(X, Y, gaussian([X, Y], *popt).reshape(X.shape), colors='w')
 plt.xlabel('Difference in Chi Orientation')
 plt.ylabel('Difference in Phi Orientation')
@@ -860,6 +820,14 @@ plt.show()
 
 # Extract the fitted parameters
 amplitude, xo, yo, sigma_x, sigma_y, theta, offset = popt
+print("Amplitude:", amplitude)
+print("xo:", xo)
+print("yo:", yo)
+print("sigma_x:", sigma_x)
+print("sigma_y:", sigma_y)
+print("theta:", theta)
+print("offset:", offset)
+
 
 # Center of mass of the distribution
 center_of_mass = (xo, yo)
