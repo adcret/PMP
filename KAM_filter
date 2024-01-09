@@ -7,10 +7,8 @@ from skimage.feature import canny
 from skimage.measure import regionprops
 import matplotlib.pyplot as plt
 import matplotlib.colors as colors
-from scipy.stats import norm
+from scipy.stats import norm, lognorm
 from scipy.optimize import curve_fit
-from IPython.display import display
-import ipywidgets as widgets
 import time 
 from rtree import index
 from matplotlib.widgets import Slider
@@ -20,18 +18,19 @@ from scipy.stats import norm
 from scipy.optimize import curve_fit
 import time 
 from rtree import index
+import csv
 
 
 plt.ion()
 
 # Data location
-file_path = 'C:\\Users\\adacre\\Documents\\DTU_Project\\data\\'
+file_path = 'C:\\Users\\adacre\\OneDrive - Danmarks Tekniske Universitet\\Documents\\DTU_Project\\data\\fit15\\'
 
 # Information about pixel size
 pixel_y = 0.203; pixel_x = 0.6575; # effective pixel sizes in mu
 
 # Read in CHI COM data
-chi_file = fabio.open(file_path + '838um_2x_2_05_com_chi_fit15.edf')
+chi_file = fabio.open(file_path + '638um_2x_05_com_chi_fit15.edf')
 A = chi_file.data
 row_size, col_size = A.shape
 
@@ -48,7 +47,7 @@ Chi_Img = B - ave_chi
 max_chi = np.nanmax(Chi_Img)  # Find max, ignoring NaNs
 
 # Read in PHI COM data
-phi_file = fabio.open(file_path + '838um_2x_2_05_com_phi_fit15.edf')
+phi_file = fabio.open(file_path + '638um_2x_05_com_phi_fit15.edf')
 A = phi_file.data
 
 # Rotate and mirror for Phi data
@@ -107,7 +106,7 @@ print(f'Sigma of Phi_Img distribution = {sigma_phi} deg')
 plt.legend()
 plt.xlabel('Degrees')
 
-plt.draw()
+## plt.draw()
 
 # Scale Chi_Img and Phi_Img
 MinChi, MaxChi = np.nanmin(Chi_Img), np.nanmax(Chi_Img)
@@ -159,7 +158,7 @@ plt.ylabel('y in micrometer')
 plt.axis('equal')
 plt.title('Mosa map RGB')
 
-plt.draw()
+ ## plt.draw()
 
 kernelSize = 2
 KAM = np.zeros((col_size, row_size))
@@ -234,7 +233,7 @@ plt.ylabel('y in micrometer')
 plt.axis('equal')
 plt.title('KAM mask')
 
-plt.draw()
+## plt.draw()
 
 # Skeletonize the KAM mask
 skel_Img = skeletonize(KAM_mask)
@@ -288,11 +287,11 @@ plt.ylabel('y in micrometer')
 plt.axis('equal')
 plt.title('KAM skeleton overlay on Mosa map with highlighted skeleton')
 
-plt.draw()
-plt.show()
+## plt.draw()
+## plt.show()
 
 # Read in FWHM data for Chi
-chi_fwhm_file = fabio.open(file_path + '838um_2x_2_05_fwhm_chi_fit15.edf')
+chi_fwhm_file = fabio.open(file_path + '638um_2x_05_fwhm_chi_fit15.edf')
 A = chi_fwhm_file.data
 B1 = A.T
 B = np.flipud(B1)
@@ -300,7 +299,7 @@ B[~grain_mask] = 2  # Apply grain mask and set outside values to 2
 FWHM_Chi = np.minimum(np.abs(B), 2)
 
 # Read in FWHM data for Phi
-phi_fwhm_file = fabio.open(file_path + '838um_2x_2_05_fwhm_phi_fit15.edf')
+phi_fwhm_file = fabio.open(file_path + '638um_2x_05_fwhm_phi_fit15.edf')
 A = phi_fwhm_file.data
 B1 = A.T
 B = np.flipud(B1)
@@ -489,6 +488,26 @@ plt.hist(size_from_area1, bins=100, range=(0.0, 25.0))
 plt.xlabel('From areas: size in mu')
 plt.title('Cell size histogram')
 plt.draw()
+
+
+# Fit a log-normal distribution to the data
+shape, loc, scale = lognorm.fit(size_from_area1)
+print(lognorm.fit(size_from_area1))
+
+# Generate values from the fitted distribution
+x = np.linspace(min(size_from_area1), max(size_from_area1), 100)
+pdf = lognorm.pdf(x, shape, loc, scale)
+
+# Plot the fitted distribution
+plt.figure()
+plt.hist(size_from_area1, bins=100, range=(0.0, 25.0), density=True, alpha=0.5)
+plt.plot(x, pdf, 'r-', label='Fitted log-normal distribution')
+plt.xlabel('From areas: size in mu')
+plt.ylabel('Probability density')
+plt.title('Fitted log-normal distribution')
+plt.legend(lognorm.fit(size_from_area1))
+plt.show()
+
 
 # Display mean and median size
 mean_size = np.mean(size_from_area)
@@ -849,4 +868,14 @@ print("Chi-squared:", chi_squared)
 print("Degrees of Freedom:", degrees_of_freedom)
 print("Chi-squared per Degree of Freedom:", chi_squared_per_dof)
 
+# Pairing the differences
+paired_differences = zip(chi_differences, phi_differences)
 
+# Writing to CSV
+with open(file_path + 'orientation_differences.csv', 'w', newline='') as file:
+    writer = csv.writer(file)
+    writer.writerow(['Chi Difference', 'Phi Difference'])  # Writing header
+    for pair in paired_differences:
+        writer.writerow(pair)
+
+print("Data exported to CSV file.")
