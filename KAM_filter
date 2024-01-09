@@ -493,6 +493,8 @@ plt.draw()
 # Fit a log-normal distribution to the data
 shape, loc, scale = lognorm.fit(size_from_area1)
 print(lognorm.fit(size_from_area1))
+mu = np.log(scale)
+sigma = shape
 
 # Generate values from the fitted distribution
 x = np.linspace(min(size_from_area1), max(size_from_area1), 100)
@@ -500,12 +502,13 @@ pdf = lognorm.pdf(x, shape, loc, scale)
 
 # Plot the fitted distribution
 plt.figure()
-plt.hist(size_from_area1, bins=100, range=(0.0, 25.0), density=True, alpha=0.5)
+plt.hist(size_from_area1, bins=100, range=(0.0, 25.0), density=True, alpha=1)
 plt.plot(x, pdf, 'r-', label='Fitted log-normal distribution')
 plt.xlabel('From areas: size in mu')
 plt.ylabel('Probability density')
 plt.title('Fitted log-normal distribution')
-plt.legend(lognorm.fit(size_from_area1))
+plt.legend()
+plt.annotate(f'$\mu$ = {mu:.2f} \n$\sigma$ = {sigma:.2f}', xy=(0.6, 0.8), xycoords='axes fraction', fontsize=12)
 plt.show()
 
 
