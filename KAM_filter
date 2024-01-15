@@ -30,7 +30,7 @@ file_path = 'C:\\Users\\adacre\\OneDrive - Danmarks Tekniske Universitet\\Docume
 pixel_y = 0.203; pixel_x = 0.6575; # effective pixel sizes in mu
 
 # Read in CHI COM data
-chi_file = fabio.open(file_path + '638um_2x_05_com_chi_fit15.edf')
+chi_file = fabio.open(file_path + '238um_2x_05_com_chi_fit15.edf')
 A = chi_file.data
 row_size, col_size = A.shape
 
@@ -47,7 +47,7 @@ Chi_Img = B - ave_chi
 max_chi = np.nanmax(Chi_Img)  # Find max, ignoring NaNs
 
 # Read in PHI COM data
-phi_file = fabio.open(file_path + '638um_2x_05_com_phi_fit15.edf')
+phi_file = fabio.open(file_path + '238um_2x_05_com_phi_fit15.edf')
 A = phi_file.data
 
 # Rotate and mirror for Phi data
@@ -209,7 +209,7 @@ plt.title('KAM values histogram')
 
 
 # Create KAM filter and calculate area ratio
-KAM_threshold = 0.043
+KAM_threshold = 0.015
 KAM_filter = np.zeros_like(KAM, dtype=bool)
 
 # Apply the threshold to create the filter
@@ -290,8 +290,8 @@ plt.title('KAM skeleton overlay on Mosa map with highlighted skeleton')
 ## plt.draw()
 ## plt.show()
 
-# Read in FWHM data for Chi
-chi_fwhm_file = fabio.open(file_path + '638um_2x_05_fwhm_chi_fit15.edf')
+# Read in FWHM data for Ch
+chi_fwhm_file = fabio.open(file_path + '238um_2x_05_fwhm_chi_fit15.edf')
 A = chi_fwhm_file.data
 B1 = A.T
 B = np.flipud(B1)
@@ -299,7 +299,7 @@ B[~grain_mask] = 2  # Apply grain mask and set outside values to 2
 FWHM_Chi = np.minimum(np.abs(B), 2)
 
 # Read in FWHM data for Phi
-phi_fwhm_file = fabio.open(file_path + '638um_2x_05_fwhm_phi_fit15.edf')
+phi_fwhm_file = fabio.open(file_path + '238um_2x_05_fwhm_phi_fit15.edf')
 A = phi_fwhm_file.data
 B1 = A.T
 B = np.flipud(B1)
@@ -491,18 +491,18 @@ plt.draw()
 
 
 # Fit a log-normal distribution to the data
-shape, loc, scale = lognorm.fit(size_from_area1)
+shape, loc, scale = lognorm.fit(size_from_area)
 print(lognorm.fit(size_from_area1))
 mu = np.log(scale)
 sigma = shape
 
 # Generate values from the fitted distribution
-x = np.linspace(min(size_from_area1), max(size_from_area1), 100)
+x = np.linspace(min(size_from_area), max(size_from_area), 100)
 pdf = lognorm.pdf(x, shape, loc, scale)
 
 # Plot the fitted distribution
 plt.figure()
-plt.hist(size_from_area1, bins=100, range=(0.0, 25.0), density=True, alpha=1)
+plt.hist(size_from_area, bins=100, range=(0.0, 25.0), density=True, alpha=1)
 plt.plot(x, pdf, 'r-', label='Fitted log-normal distribution')
 plt.xlabel('From areas: size in mu')
 plt.ylabel('Probability density')
