@@ -389,11 +389,12 @@ for _ in range(len(com_chi)):
 
 # print(av_cell)
 plt.figure()
-plt.plot(av_cell, 'o')
+plt.plot(av_cell1, 'o')
 
 
 n = len(sizes1)  # Or the length of X or PDF, assuming they are all the same
 
+min_length = min(len(X1), len(PDF1), len(sizes1), len(av_cell1))
 # Create a figure and axes
 # Use math.ceil to handle odd numbers of plots
 rows = n // 2 if n % 2 == 0 else n // 2 + 1
@@ -402,16 +403,17 @@ fig, axs = plt.subplots(rows, 2, figsize=(10, 5))  # Adjust the figsize as neede
 # Flatten the axs array for easy indexing in case of a grid
 axs = axs.flatten()
 
-for i in range(n):
+for i in range(min_length):
     # Plot histogram
     axs[i].hist(sizes1[i], bins=100, range=(0, 25), density=True, alpha=1)  # Adjust alpha for transparency
 
     # Plot line
     axs[i].plot(X1[i], PDF1[i], 'r-')
+    axs[i].annotate(f'Mean: {av_cell1[i]:.2f} mu', xy=(0.5, 0.5), xycoords='axes fraction', ha='center', va='center')
 
-# If n is odd, hide the last subplot which is unused
-if n % 2 != 0:
-    axs[-1].axis('off')
+    axs[i].set_xlim(0, 25)  # Adjust the x limits as needed
+    axs[i].set_title(f'data {com_chi[i]}')  
+
 
 # Show the plot
 plt.show()
