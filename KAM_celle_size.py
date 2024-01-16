@@ -7,14 +7,16 @@ import matplotlib.colors as colors
 from scipy.ndimage import label
 from skimage.measure import regionprops
 from scipy.stats import lognorm
-
-
+import pandas as pd
 
 
 path = 'C:\\Users\\adacre\\OneDrive - Danmarks Tekniske Universitet\\Documents\\DTU_Project\\data\\fit15\\'
 files = [f for f in os.listdir(path) if os.path.isfile(os.path.join(path, f))]
 com_phi = [file for file in files if 'com_phi' in file]
 com_chi =[file for file in files if 'com_chi' in file]
+
+names = [file[:3] for file in com_phi]
+print(names)    
 
 pixel_x = 0.6575
 pixel_y = 0.203
@@ -32,6 +34,7 @@ X1 = []
 PDF = []
 PDF1 =  []
 
+excel_data = {}
 
 for _ in range(len(com_chi)):
     chi_file = fabio.open(path + com_chi[_])
@@ -97,7 +100,7 @@ for _ in range(len(com_chi)):
     mosa[mosa < 0] = 0        # Clamp values below 0 to 0
     mosa[mosa > 1] = 1        # Clamp values above 1 to 1
 
-    kernelSize = 3
+    kernelSize = 2
     KAM = np.zeros((col_size, row_size))
 
     # Loop over all data points
@@ -123,11 +126,11 @@ for _ in range(len(com_chi)):
 
 
     # Create KAM filter and calculate area ratio
-    KAM_list = np.arange(0, 0.085, 0.0005).tolist()
+    KAM_list = np.arange(0, 0.085, 0.001).tolist()
     
 
-    for _ in KAM_list:
-        KAM_threshold = _
+    for value in KAM_list:
+        KAM_threshold = value
         KAM_filter = np.zeros_like(KAM, dtype=bool)
 
         # Apply the threshold to create the filter
@@ -255,11 +258,12 @@ for _ in range(len(com_chi)):
             print(f"Mean: {mean_size1} mu, Median: {median_size1} mu, with filtered cells")
             av_cell.append(mean_size)
             av_cell1.append(mean_size1)
+
             break
 
 
         elif area_ratio < 0.65:
-            KAM_threshold = 0.001
+            KAM_threshold = 0.0015
             KAM_filter = np.zeros_like(KAM, dtype=bool)
 
                 # Apply the threshold to create the filter
@@ -335,8 +339,6 @@ for _ in range(len(com_chi)):
                 if not overlap:
                     filtered_props.append(region)
 
-
-
             nr_cells1 = len(filtered_props)
 
             print(f"Number of cells after filtering: {nr_cells1}")
@@ -385,6 +387,16 @@ for _ in range(len(com_chi)):
             print(f"Mean: {mean_size1} mu, Median: {median_size1} mu, with filtered cells")
             break
 
+    column_name = names[_]  # Using the name from the names list
+    if column_name not in excel_data:
+        excel_data[column_name] = []
+    excel_data[column_name].extend(size_from_area1)
+    print('A line was added to the excel file.')
+
+
+df = pd.DataFrame(dict([(k, pd.Series(v)) for k, v in excel_data.items()]))
+df.to_excel('cell_sizes_kernel2.xlsx', index=False)
+print("Excel file 'cell_sizes_kernel2.xlsx' has been saved.")
 
 
 # print(av_cell)
