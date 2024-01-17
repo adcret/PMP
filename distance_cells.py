@@ -58,19 +58,21 @@ grain1 = binary_erosion(grain1, se)
 
 # Assuming Chi_Img[grain1] and Phi_Img[grain1] are your data arrays
 orientations = np.stack((Chi_Img[grain1], Phi_Img[grain1]), axis=-1)
+orientations_image = np.stack((Chi_Img, Phi_Img,np.ones_like(Chi_Img)), axis=-1)
 
 # Compute the 2D histogram
-Z, xedges, yedges = np.histogram2d(orientations[:, 0], orientations[:, 1], bins=50)
+Z, xedges, yedges = np.histogram2d(orientations[:, 0], orientations[:, 1], bins=[25, 22])
 
 # Create meshgrid
 X, Y = np.meshgrid(xedges[:-1], yedges[:-1], indexing='ij')
 
 # Plotting the contour
 plt.figure()
-plt.contour(X, Y, Z, levels=10, linewidths=1)
+plt.contour(X, Y, Z, levels=25, linewidths=1.5, cmap='jet')
 plt.xlabel('Chi')
 plt.ylabel('Phi')
-plt.show()
+plt.title('Orientation distribution, frequency map')
+
 
 print(orientations)
 
@@ -138,17 +140,6 @@ se = disk(1)
 KAM2 = binary_erosion(KAM_filter, se)
 KAM_mask = binary_dilation(KAM2, se)
 
-# Plot KAM_mask
-plt.figure()
-plt.imshow(KAM_mask, extent=[0, pixel_x * row_size, 0, pixel_y * col_size])
-plt.colorbar()
-plt.xlabel('x in micrometer')
-plt.ylabel('y in micrometer')
-plt.axis('equal')
-plt.title('KAM mask')
-
-## plt.draw()
-
 # Skeletonize the KAM mask
 skel_Img = skeletonize(KAM_mask)
 
@@ -166,8 +157,10 @@ labeled_array, num_features = label(BW_img)
 nr_cells = num_features  # Adjust for the exterior being labeled as a cell num_features - 1
 print(f"Number of cells: {nr_cells}")
 
+
 # Get region properties
 props = regionprops(labeled_array)
+
 
 min_cell_size = 2  # minimum size in pixel for a cell to be considered
 
@@ -196,7 +189,7 @@ for region in props:
     if not overlap and region.area >= min_cell_size:
         filtered.append(region)
 
-# Iterate over each region in props
+# Iterate over each region in propss
 for region in filtered:
     # Get the coordinates of the region
     region_coords = region.coords
@@ -215,8 +208,12 @@ print(f"Number of cells: {nr_cells1}")
 # Calculate areas and centroids
 areas_all = [prop.area * pixel_x * pixel_y for prop in props][0:] 
 areas_all1 = [prop.area * pixel_x * pixel_y for prop in filtered_props][0:] # Skip exterior [1:]
+
+centroids = np.array([prop.centroid for prop in props])[0:] 
+
 size_from_area = np.sqrt(areas_all)
 size_from_area1 = np.sqrt(areas_all1)
+
 
 # Display mean and median size
 mean_size = np.mean(size_from_area)
@@ -248,9 +245,62 @@ for ii in range(1, nr_cells1):  # Skip exterior nr_cells + 1
         Cell_Img1[row, col, 1] = cell_ave_Phi
         Cell_Img1[row, col, 2] = 0  # Set blue channel to 0
 
+# Create and plot the Cell_Img
+Cell_Img_orientations = np.copy(orientations_image)
+for ii in range(1, nr_cells):  # Skip exterior nr_cells + 1
+    cellPixels = props[ii].coords
+    cell_ave_Chi = np.mean(orientations_image[cellPixels[:, 0], cellPixels[:, 1], 0])
+    cell_ave_Phi = np.mean(orientations_image[cellPixels[:, 0], cellPixels[:, 1], 1])
+    for row, col in cellPixels:
+        Cell_Img_orientations[row, col, 0] = cell_ave_Chi
+        Cell_Img_orientations[row, col, 1] = cell_ave_Phi
+        Cell_Img_orientations[row, col, 2] = 0  # Set blue channel to 0
+
+
 # Overlay on skeletonized image
 Cell_Img[skel_Img] = [0, 0, 0]
 Cell_Img1[skel_Img] = [0, 0, 0]
+Cell_Img_orientations[skel_Img] = [0, 0, 0]
+
+
+int_centroids = np.round(centroids).astype(int)
+# Initialize an array to hold the pixel values
+centroid_pixel_values = np.zeros((len(int_centroids), orientations_image.shape[2]))
+
+# Loop over the centroids and extract the pixel values
+for i, (x, y) in enumerate(int_centroids):
+    centroid_pixel_values[i] = orientations_image[x, y]
+
+
+centroid_pixel_values = [list(sub_array[:2]) for sub_array in centroid_pixel_values]
+
+# Assuming centroid_pixel_values is already defined
+x_values, y_values = zip(*centroid_pixel_values)
+
+# Convert to numpy arrays for easier handling of NaNs
+x_values = np.array(x_values)
+y_values = np.array(y_values)
+
+# Check for NaNs and handle them
+# For example, you could remove the pairs where either x or y is NaN
+mask = ~np.isnan(x_values) & ~np.isnan(y_values)
+x_values = x_values[mask]
+y_values = y_values[mask]
+
+# Now you can compute the 2D histogram
+Z, xedges, yedges = np.histogram2d(x_values, y_values, bins=[25, 22])
+
+# Create meshgrid
+X, Y = np.meshgrid(xedges[:-1], yedges[:-1], indexing='ij')
+
+# Plotting the contour
+plt.figure()
+plt.contour(X, Y, Z, levels=25, linewidths=1.5, cmap='jet')
+plt.xlabel('Chi')
+plt.ylabel('Phi')
+plt.title('Orientation distribution of cells, frequency map')
+plt.show()
+
 
 # Plot the Cell_Img
 plt.figure()
@@ -267,4 +317,3 @@ plt.xlabel('x in micrometer')
 plt.ylabel('y in micrometer')
 plt.title('Cells and skeleton')
 plt.draw()
-
