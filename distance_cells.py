@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 import matplotlib.colors as colors
 from scipy.ndimage import label
 from skimage.measure import regionprops
-from scipy.stats import lognorm
+import math
 
 
 pixel_x = 0.6575
@@ -55,26 +55,6 @@ se = disk(3, strict_radius=True)
 # Perform erosion twice
 grain1 = binary_erosion(grain1, se)
 grain1 = binary_erosion(grain1, se)
-
-# Assuming Chi_Img[grain1] and Phi_Img[grain1] are your data arrays
-orientations = np.stack((Chi_Img[grain1], Phi_Img[grain1]), axis=-1)
-orientations_image = np.stack((Chi_Img, Phi_Img,np.ones_like(Chi_Img)), axis=-1)
-
-# Compute the 2D histogram
-Z, xedges, yedges = np.histogram2d(orientations[:, 0], orientations[:, 1], bins=[25, 22])
-
-# Create meshgrid
-X, Y = np.meshgrid(xedges[:-1], yedges[:-1], indexing='ij')
-
-# Plotting the contour
-plt.figure()
-plt.contour(X, Y, Z, levels=25, linewidths=1.5, cmap='jet')
-plt.xlabel('Chi')
-plt.ylabel('Phi')
-plt.title('Orientation distribution, frequency map')
-
-
-print(orientations)
 
 
 # Perform dilation twice
@@ -149,6 +129,7 @@ Phi_Img_overlay = np.where(skel_Img, 0.99, Phi_Img)
 Mosa_Img_overlay = np.copy(Mosa_Img)
 Mosa_Img_overlay[skel_Img] = [2.5, 2.5, 2.5]  # Assuming Mosa_Img is 3-channel
 
+
 # Invert and dilate the skeleton image
 BW_img = ~binary_dilation(skel_Img, disk(1))
 
@@ -177,6 +158,7 @@ dilated_mask = binary_dilation(dilated_mask, disk(20))
 filtered = []
 filtered_props = []
 
+
 # Iterate over each region in props
 for region in props:
     # Get the coordinates of the region
@@ -200,9 +182,7 @@ for region in filtered:
         filtered_props.append(region)
 
 
-
 nr_cells1 = len(filtered_props)
-
 print(f"Number of cells: {nr_cells1}")
 
 # Calculate areas and centroids
@@ -245,25 +225,171 @@ for ii in range(1, nr_cells1):  # Skip exterior nr_cells + 1
         Cell_Img1[row, col, 1] = cell_ave_Phi
         Cell_Img1[row, col, 2] = 0  # Set blue channel to 0
 
-# Create and plot the Cell_Img
-Cell_Img_orientations = np.copy(orientations_image)
-for ii in range(1, nr_cells):  # Skip exterior nr_cells + 1
-    cellPixels = props[ii].coords
-    cell_ave_Chi = np.mean(orientations_image[cellPixels[:, 0], cellPixels[:, 1], 0])
-    cell_ave_Phi = np.mean(orientations_image[cellPixels[:, 0], cellPixels[:, 1], 1])
-    for row, col in cellPixels:
-        Cell_Img_orientations[row, col, 0] = cell_ave_Chi
-        Cell_Img_orientations[row, col, 1] = cell_ave_Phi
-        Cell_Img_orientations[row, col, 2] = 0  # Set blue channel to 0
+
 
 
 # Overlay on skeletonized image
 Cell_Img[skel_Img] = [0, 0, 0]
 Cell_Img1[skel_Img] = [0, 0, 0]
+
+# Plot the Cell_Img
+plt.figure()
+plt.imshow(Cell_Img, extent=[0, pixel_x * row_size, 0, pixel_y * col_size])
+plt.xlabel('x in micrometer')
+plt.ylabel('y in micrometer')
+plt.title('Cells and skeleton')
+plt.draw()
+
+# Plot the Cell_Img
+plt.figure()
+plt.imshow(Cell_Img1, extent=[0, pixel_x * row_size, 0, pixel_y * col_size])
+plt.xlabel('x in micrometer')
+plt.ylabel('y in micrometer')
+plt.title('Cells and skeleton')
+plt.draw()
+
+############################################################################################################
+############################################################################################################
+#######                                                                                           ##########
+#######                                   LOOKING AT SELECTED ORIENTATIONS                        ##########
+#######                                                                                           ##########
+############################################################################################################
+############################################################################################################
+
+chi = np.copy(Chi_Img)
+phi = np.copy(Phi_Img)
+
+# Assuming Chi_Img[grain1] and Phi_Img[grain1] are your data arrays
+orientations = np.stack((Chi_Img[grain1], Phi_Img[grain1]), axis=-1)
+orientations_image = np.stack((Chi_Img, Phi_Img, np.ones_like(Chi_Img)), axis=-1)
+
+# Creating combined mask
+combined_mask = (Chi_Img > -0.05) & (Chi_Img < 0.5) & (Phi_Img> -0.5) & (Phi_Img < 0.5)
+
+plt.figure()
+plt.imshow(combined_mask, extent=[0, pixel_x * row_size, 0, pixel_y * col_size])
+
+combined_mask = binary_erosion(combined_mask, se)
+combined_mask = binary_dilation(combined_mask, se)
+
+plt.figure()
+plt.imshow(combined_mask, extent=[0, pixel_x * row_size, 0, pixel_y * col_size])
+
+# making the image with the mask applied
+orientations_image[~combined_mask] = [0, 0, 0]
+
+# Find the indices where the mask is True
+y_indices, x_indices = np.where(combined_mask)
+
+
+# Compute the 2D histogram
+Z, xedges, yedges = np.histogram2d(orientations[:, 0], orientations[:, 1], bins=[25, 22])
+
+# Create meshgrid
+X, Y = np.meshgrid(xedges[:-1], yedges[:-1], indexing='ij')
+
+# Plotting the contour
+plt.figure()
+plt.contour(X, Y, Z, levels=25, linewidths=1.5, cmap='jet')
+plt.xlabel('Chi')
+plt.ylabel('Phi')
+plt.title('Orientation distribution, frequency map')
+
+mosa1 = colors.hsv_to_rgb(orientations_image)  # Convert HSV to RGB
+# Overlay skeleton on Mosa overlay and plot
+Mosa_overlay = np.copy(mosa1)  # Assuming mosa is in RGB format
+Mosa_overlay[skel_Img] = [0, 0, 0]
+plt.figure()
+plt.imshow(Mosa_overlay, extent=[0, pixel_x * row_size, 0, pixel_y * col_size])
+plt.xlabel('x in micrometer')
+plt.ylabel('y in micrometer')
+plt.axis('equal')
+plt.title('KAM skeleton overlay on Mosa map with highlighted skeleton for selected orientations')
+
+orientation_props = []
+overlap_threshold = 0.1  # 60% overlap
+
+for region in props:
+    region_coords = region.coords
+    # Calculate the number of pixels in the region that are True in the combined_mask
+    overlap_count = np.sum(combined_mask[region_coords[:, 0], region_coords[:, 1]])
+    # Calculate the overlap percentage
+    overlap_percentage = overlap_count / len(region_coords)
+    # Check if the overlap percentage is above the threshold
+    if overlap_percentage > overlap_threshold:
+        orientation_props.append(region)
+
+
+nr_cells_orientation = len(orientation_props)
+print(f"Number of cells with given orientation: {nr_cells_orientation}")
+
+orinetation_centroids = np.array([prop.centroid for prop in orientation_props])[0:]
+
+orinetation_centroids = [[sublist[0]*pixel_y, sublist[1]*pixel_x] for sublist in orinetation_centroids]
+
+orientation_x =[sublist[0] for sublist in orinetation_centroids]
+orientation_y =[sublist[1] for sublist in orinetation_centroids]
+
+distances =[]
+for _ in range(len(orinetation_centroids)):
+    a = orinetation_centroids[_]
+    for i in range(len(orinetation_centroids)):
+        b = orinetation_centroids[i]
+        if i == _:
+            continue
+        else:
+            distances.append(math.dist(a, b))
+
+distance_vectors = []
+print('length of orinetation_centroids', len(orinetation_centroids))    
+for i in range(len(orinetation_centroids)):
+    a = orinetation_centroids[i]
+    print(f"Processing centroid {i} at {a}")  # Print the current centroid being processed
+    for j in range(len(orinetation_centroids)):
+        if i != j and i < j:
+            b = orinetation_centroids[j]
+            # Calculate the vector from a to b
+            vector = (abs(b[0] - a[0]), abs(b[1] - a[1]))
+            distance_vectors.append(vector)
+    
+print('Done!')
+plt.figure()
+plt.hist(distances, bins=100)
+plt.xlabel('Distance in micrometer')
+plt.ylabel('Frequency')
+plt.title('Distance between cells with given orientation')
+
+
+# Convert the list of vectors to a NumPy array for easy plotting
+distance_vectors = np.array(distance_vectors)
+
+print(f"Number of distance vectors: {len(distance_vectors)}")
+
+X = [sublist[0] for sublist in distance_vectors]
+Y = [sublist[1] for sublist in distance_vectors]
+
+
+plt.figure()
+plt.scatter(X, Y, s=1)
+plt.xlabel('Distance along X')
+plt.ylabel('Distance along Y')
+plt.title('Scatter Plot of Distance Vectors')
+
+
+Cell_Img_orientations = np.ones_like(Mosa_Img)  # Start with a blank image
+for ii in range(len(orientation_props)):  # Iterate through all cells with the desired orientation
+    cellPixels = orientation_props[ii].coords
+    cell_ave_Chi = np.mean(Mosa_Img[cellPixels[:, 0], cellPixels[:, 1], 0])
+    cell_ave_Phi = np.mean(Mosa_Img[cellPixels[:, 0], cellPixels[:, 1], 1])
+    for row, col in cellPixels:
+        Cell_Img_orientations[row, col, 0] = cell_ave_Chi
+        Cell_Img_orientations[row, col, 1] = cell_ave_Phi
+        Cell_Img_orientations[row, col, 2] = 0  # Set blue channel to 0
+
+# Overlay the skeleton on the Cell_Img_orientations
 Cell_Img_orientations[skel_Img] = [0, 0, 0]
 
-
-int_centroids = np.round(centroids).astype(int)
+int_centroids = np.round(orinetation_centroids).astype(int)
 # Initialize an array to hold the pixel values
 centroid_pixel_values = np.zeros((len(int_centroids), orientations_image.shape[2]))
 
@@ -299,21 +425,49 @@ plt.contour(X, Y, Z, levels=25, linewidths=1.5, cmap='jet')
 plt.xlabel('Chi')
 plt.ylabel('Phi')
 plt.title('Orientation distribution of cells, frequency map')
+#plt.show()
+
+orientation_centroids = np.array([prop.centroid for prop in orientation_props])[0:]
+# Transform centroids to pixel values
+transformed_centroids = np.copy(orientation_centroids)
+transformed_centroids[:, 0] *= pixel_y  # Scale y-coordinates (rows)
+transformed_centroids[:, 1] *= pixel_x  # Scale x-coordinates (columns)
+
+# Create a mask and plot
+mask = np.ones_like(Mosa_Img)
+mask[skel_Img] = [0, 0, 0]
+mask = np.flipud(mask)
+plt.figure()
+plt.imshow(mask, cmap='gray', origin='upper', extent=[0, pixel_x * row_size, 0, pixel_y * col_size])
+plt.scatter(transformed_centroids[:, 1], transformed_centroids[:, 0], c='red', s=1)  # Scatter plot 
+plt.xlabel('x in microns')
+plt.ylabel('y in microns')
+plt.title('Centroid on skeletonized image')
+plt.gca().invert_yaxis()
+
+# Flip the image data upside down
+flipped_mask = np.flipud(mask)
+
+# Define the thresholds for yellow
+red_threshold = 0.84  # adjust as needed
+green_threshold = 0.82  # adjust as needed
+blue_threshold = 0.001  # adjust as needed
+
+# Find yellow pixels
+yellow_pixels = (Cell_Img_orientations[:, :, 0] > red_threshold) & \
+                (Cell_Img_orientations[:, :, 1] > green_threshold) & \
+                (Cell_Img_orientations[:, :, 2] < blue_threshold)
+
+# Set yellow pixels to white
+Cell_Img_orientations[yellow_pixels] = [1, 1, 1]
+
+
+# Plot the Cell_Img
+plt.figure()
+plt.imshow(Cell_Img_orientations, extent=[0, pixel_x * row_size, 0, pixel_y * col_size])
+plt.xlabel('x in micrometer')
+plt.ylabel('y in micrometer')
+plt.title('Cells and skeleton of selected orientations')
+plt.draw()
+
 plt.show()
-
-
-# Plot the Cell_Img
-plt.figure()
-plt.imshow(Cell_Img, extent=[0, pixel_x * row_size, 0, pixel_y * col_size])
-plt.xlabel('x in micrometer')
-plt.ylabel('y in micrometer')
-plt.title('Cells and skeleton')
-plt.draw()
-
-# Plot the Cell_Img
-plt.figure()
-plt.imshow(Cell_Img1, extent=[0, pixel_x * row_size, 0, pixel_y * col_size])
-plt.xlabel('x in micrometer')
-plt.ylabel('y in micrometer')
-plt.title('Cells and skeleton')
-plt.draw()
