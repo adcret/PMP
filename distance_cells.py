@@ -264,7 +264,7 @@ orientations = np.stack((Chi_Img[grain1], Phi_Img[grain1]), axis=-1)
 orientations_image = np.stack((Chi_Img, Phi_Img, np.ones_like(Chi_Img)), axis=-1)
 
 # Creating combined mask
-combined_mask = (Chi_Img > -0.05) & (Chi_Img < 0.5) & (Phi_Img> -0.5) & (Phi_Img < 0.5)
+combined_mask = (Chi_Img > -0.25) & (Chi_Img < 0.2) & (Phi_Img> -0.2) & (Phi_Img < -0.12)
 
 plt.figure()
 plt.imshow(combined_mask, extent=[0, pixel_x * row_size, 0, pixel_y * col_size])
@@ -344,7 +344,6 @@ distance_vectors = []
 print('length of orinetation_centroids', len(orinetation_centroids))    
 for i in range(len(orinetation_centroids)):
     a = orinetation_centroids[i]
-    print(f"Processing centroid {i} at {a}")  # Print the current centroid being processed
     for j in range(len(orinetation_centroids)):
         if i != j and i < j:
             b = orinetation_centroids[j]
@@ -352,7 +351,7 @@ for i in range(len(orinetation_centroids)):
             vector = (abs(b[0] - a[0]), abs(b[1] - a[1]))
             distance_vectors.append(vector)
     
-print('Done!')
+print('Difference vector calculation done!')
 plt.figure()
 plt.hist(distances, bins=100)
 plt.xlabel('Distance in micrometer')
@@ -374,6 +373,19 @@ plt.scatter(X, Y, s=1)
 plt.xlabel('Distance along X')
 plt.ylabel('Distance along Y')
 plt.title('Scatter Plot of Distance Vectors')
+
+# Compute the 2D histogram
+Z, xedges, yedges = np.histogram2d(X, Y, bins=[30, 50])
+
+# Create meshgrid
+X, Y = np.meshgrid(xedges[:-1], yedges[:-1], indexing='ij')
+
+# Plotting the contour
+plt.figure()
+plt.contour(X, Y, Z, levels=15, linewidths=1.5, cmap='jet')
+plt.xlabel('Distance along X')
+plt.ylabel('Distance along Y')
+plt.title('Distance vector distribution, frequency map')
 
 
 Cell_Img_orientations = np.ones_like(Mosa_Img)  # Start with a blank image
