@@ -264,7 +264,7 @@ orientations = np.stack((Chi_Img[grain1], Phi_Img[grain1]), axis=-1)
 orientations_image = np.stack((Chi_Img, Phi_Img, np.ones_like(Chi_Img)), axis=-1)
 
 # Creating combined mask
-combined_mask = (Chi_Img > -0.25) & (Chi_Img < 0.2) & (Phi_Img> -0.2) & (Phi_Img < -0.12)
+combined_mask = (Chi_Img > -0.15) & (Chi_Img < 0.15) & (Phi_Img> -0.15) & (Phi_Img < -0.12)
 
 plt.figure()
 plt.imshow(combined_mask, extent=[0, pixel_x * row_size, 0, pixel_y * col_size])
@@ -283,12 +283,12 @@ y_indices, x_indices = np.where(combined_mask)
 
 
 # Compute the 2D histogram
-Z, xedges, yedges = np.histogram2d(orientations[:, 0], orientations[:, 1], bins=[25, 22])
+Z, xedges, yedges = np.histogram2d(orientations[:, 1], orientations[:, 0], bins=[25, 22])
 
 # Create meshgrid
 X, Y = np.meshgrid(xedges[:-1], yedges[:-1], indexing='ij')
 
-# Plotting the contour
+# Plotting the original contour
 plt.figure()
 plt.contour(X, Y, Z, levels=25, linewidths=1.5, cmap='jet')
 plt.xlabel('Chi')
@@ -382,7 +382,7 @@ X, Y = np.meshgrid(xedges[:-1], yedges[:-1], indexing='ij')
 
 # Plotting the contour
 plt.figure()
-plt.contour(X, Y, Z, levels=15, linewidths=1.5, cmap='jet')
+plt.contour(X, Y, Z, levels=7, linewidths=1.5, cmap='jet')
 plt.xlabel('Distance along X')
 plt.ylabel('Distance along Y')
 plt.title('Distance vector distribution, frequency map')
