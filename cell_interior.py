@@ -377,23 +377,56 @@ nr_cells1 = len(filtered_props)
 
 print(f"Number of cells: {nr_cells1}")
 
+# Remove the elements with really high FWHM values
+filtered_props = [prop for prop in filtered_props if prop.area * pixel_x * pixel_y <= 400]
+
 # Calculate areas and centroids
-areas_all = [prop.area * pixel_x * pixel_y for prop in props][0:] 
-areas_all1 = [prop.area * pixel_x * pixel_y for prop in filtered_props][0:] # Skip exterior [1:]
+areas_all = [prop.area * pixel_x * pixel_y for prop in props][1:] 
+areas_all1 = [prop.area * pixel_x * pixel_y for prop in filtered_props][1:] # Skip exterior [1:]
 size_from_area = np.sqrt(areas_all)
 size_from_area1 = np.sqrt(areas_all1)
 
 # Calculate the average FWHM value for each cell
-ave_FWHM = {prop.label: np.mean(FWHM_Img[prop.coords[:, 0], prop.coords[:, 1]]) for prop in filtered_props}
+ave_FWHM = {prop.label: np.mean([fwhm for fwhm in FWHM_Img[prop.coords[:, 0], prop.coords[:, 1]] if fwhm <= 3.5]) for prop in filtered_props}
+std_FWHM = {prop.label: np.std([fwhm for fwhm in FWHM_Img[prop.coords[:, 0], prop.coords[:, 1]] if fwhm <= 3.5]) for prop in filtered_props}
+fwhm_FWHM = {prop.label: std_FWHM[prop.label] * 2.355 for prop in filtered_props}
 
-fwhm_values = [ave_FWHM[prop.label] for prop in filtered_props]
-fwhm_values = np.radians(fwhm_values)
+std_FWHM_values = [std_FWHM[prop.label] for prop in filtered_props][1:]
+std_FWHM_values = np.radians(std_FWHM_values)
+
+fwhm_ave_values = [ave_FWHM[prop.label] for prop in filtered_props][1:]
+fwhm_ave_values = np.radians(fwhm_ave_values)
+
+fwhm_fwhm_values = [fwhm_FWHM[prop.label] for prop in filtered_props][1:]
+fwhm_fwhm_values = np.radians(fwhm_fwhm_values)
 
 # Plotting
 plt.figure()
-plt.scatter(size_from_area1, fwhm_values)
+plt.scatter(size_from_area1, fwhm_ave_values)
 plt.xlabel('Cell Size in Microns (sqrt of area)')
 plt.ylabel('Average FWHM (radians)')
 plt.title('Average FWHM vs Cell Size')
+
+plt.figure()
+plt.scatter(size_from_area1, fwhm_fwhm_values)
+plt.xlabel('Cell Size in Microns (sqrt of area)')
+plt.ylabel('FWHM (radians)')
+plt.title('FWHM of FWHM vs Cell Size')
+
+## Write the data to a csv file
+# Create a dictionary of the data
+data = {'Cell': [prop.label for prop in filtered_props][1:],
+        'Area in microns': areas_all1,
+        'Size in microns': size_from_area1,
+        'Mean of FWHM': fwhm_ave_values,
+        'Std of FWHM': std_FWHM_values,
+        'FWHM of FWHM': fwhm_fwhm_values}
+
+# Create a dataframe from the dictionary
+df = pd.DataFrame(data)
+
+# Write the dataframe to a csv file
+df.to_csv('FWHM_cells_4.6_radians.csv', index=False)
+
 
 plt.show()
