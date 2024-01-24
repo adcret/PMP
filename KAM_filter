@@ -7,7 +7,7 @@ from skimage.feature import canny
 from skimage.measure import regionprops
 import matplotlib.pyplot as plt
 import matplotlib.colors as colors
-from scipy.stats import norm, lognorm
+from scipy.stats import norm, lognorm, rayleigh, chi, maxwell
 from scipy.optimize import curve_fit
 import time 
 from rtree import index
@@ -30,7 +30,7 @@ file_path = 'C:\\Users\\adacre\\OneDrive - Danmarks Tekniske Universitet\\Docume
 pixel_y = 0.203; pixel_x = 0.6575; # effective pixel sizes in mu
 
 # Read in CHI COM data
-chi_file = fabio.open(file_path + '238um_2x_05_com_chi_fit15.edf')
+chi_file = fabio.open(file_path + '838um_2x_2_05_com_chi_fit15.edf')
 A = chi_file.data
 row_size, col_size = A.shape
 
@@ -47,7 +47,7 @@ Chi_Img = B - ave_chi
 max_chi = np.nanmax(Chi_Img)  # Find max, ignoring NaNs
 
 # Read in PHI COM data
-phi_file = fabio.open(file_path + '238um_2x_05_com_phi_fit15.edf')
+phi_file = fabio.open(file_path + '838um_2x_2_05_com_phi_fit15.edf')
 A = phi_file.data
 
 # Rotate and mirror for Phi data
@@ -209,7 +209,7 @@ plt.title('KAM values histogram')
 
 
 # Create KAM filter and calculate area ratio
-KAM_threshold = 0.015
+KAM_threshold = 0.041
 KAM_filter = np.zeros_like(KAM, dtype=bool)
 
 # Apply the threshold to create the filter
@@ -244,7 +244,7 @@ skel_Img = skeletonize(KAM_mask)
 # skel_Img = binary_dilation(skel_Img, se) 
 # in Python we don't need to bridge the gaps, this is already taken care of in the skeletonize function
 
-# Overlay the skeleton on Chi_Img, Phi_Img, and Mosa_Img
+# Overlay the skeleton on Chi_Img, Phi_Img, and Mosa_Imgt
 Chi_Img_overlay = np.where(skel_Img, 0.99, Chi_Img) # This somehow leads to much larger skel....
 Phi_Img_overlay = np.where(skel_Img, 0.99, Phi_Img)
 Mosa_Img_overlay = np.copy(Mosa_Img)
@@ -291,7 +291,7 @@ plt.title('KAM skeleton overlay on Mosa map with highlighted skeleton')
 ## plt.show()
 
 # Read in FWHM data for Ch
-chi_fwhm_file = fabio.open(file_path + '238um_2x_05_fwhm_chi_fit15.edf')
+chi_fwhm_file = fabio.open(file_path + '838um_2x_2_05_fwhm_chi_fit15.edf')
 A = chi_fwhm_file.data
 B1 = A.T
 B = np.flipud(B1)
@@ -299,7 +299,7 @@ B[~grain_mask] = 2  # Apply grain mask and set outside values to 2
 FWHM_Chi = np.minimum(np.abs(B), 2)
 
 # Read in FWHM data for Phi
-phi_fwhm_file = fabio.open(file_path + '238um_2x_05_fwhm_phi_fit15.edf')
+phi_fwhm_file = fabio.open(file_path + '838um_2x_2_05_fwhm_phi_fit15.edf')
 A = phi_fwhm_file.data
 B1 = A.T
 B = np.flipud(B1)
@@ -427,7 +427,7 @@ print(f"Number of cells: {nr_cells}")
 # Get region properties
 props = regionprops(labeled_array)
 
-min_cell_size = 2  # minimum size in pixel for a cell to be considered
+min_cell_size = 10  # minimum size in pixel for a cell to be considered
 
 mask = np.all(mosa == [1, 1, 1], axis=-1)
 
@@ -452,7 +452,7 @@ for region in props:
 
     # If there is no overlap and the region meets the size criteria, add it to the list
     if not overlap and region.area >= min_cell_size:
-        filtered.append(region)
+        filtered_props.append(region)
 
 # Iterate over each region in props
 for region in filtered:
@@ -461,8 +461,8 @@ for region in filtered:
 
     # Check if any of the coordinates overlap with the mask
     overlap = np.any(dilated_mask[region_coords[:, 0], region_coords[:, 1]])
-    if not overlap:
-        filtered_props.append(region)
+   # if not overlap:
+       # filtered_props.append(region)
 
 
 
@@ -502,9 +502,9 @@ pdf = lognorm.pdf(x, shape, loc, scale)
 
 # Plot the fitted distribution
 plt.figure()
-plt.hist(size_from_area, bins=100, range=(0.0, 25.0), density=True, alpha=1)
+plt.hist(size_from_area1, bins=25, range=(0.0, 25.0), density=True, alpha=1)
 plt.plot(x, pdf, 'r-', label='Fitted log-normal distribution')
-plt.xlabel('From areas: size in mu')
+plt.xlabel('From areas: size in mu')s
 plt.ylabel('Probability density')
 plt.title('Fitted log-normal distribution')
 plt.legend()
@@ -838,7 +838,7 @@ plt.draw()
 
 plt.ioff() 
 
-plt.show()
+
 
 # Extract the fitted parameters
 amplitude, xo, yo, sigma_x, sigma_y, theta, offset = popt
@@ -867,9 +867,6 @@ chi_squared = np.sum((residuals ** 2) / fitted)
 degrees_of_freedom = len(Z.ravel()) - len(popt)
 chi_squared_per_dof = chi_squared / degrees_of_freedom
 
-print("Chi-squared:", chi_squared)
-print("Degrees of Freedom:", degrees_of_freedom)
-print("Chi-squared per Degree of Freedom:", chi_squared_per_dof)
 
 # Pairing the differences
 paired_differences = zip(chi_differences, phi_differences)
@@ -882,3 +879,78 @@ with open(file_path + 'orientation_differences.csv', 'w', newline='') as file:
         writer.writerow(pair)
 
 print("Data exported to CSV file.")
+
+# Calculate the average misorientation
+
+def angular_difference(angle1, angle2):
+    # Calculate the difference between two angles and adjust for wrap-around at 360 degrees
+    diff = abs(angle1 - angle2)
+    return min(diff, 360 - diff)
+
+misorientations = []
+
+# Loop through each cell and its neighbors
+for cell_props in filtered_props:
+    cell_id = cell_props.label
+    cell_Chi = ave_Chi[cell_id]
+    cell_Phi = ave_Phi[cell_id]
+
+    # Only look at neighbors that are in the dictionary and have a greater label
+    neighbor_ids = [n_id for n_id in neighbors_dict.get(cell_id, []) if n_id > cell_id]
+
+    for neighbor_id in neighbor_ids:
+        neighbor_Chi = ave_Chi[neighbor_id]
+        neighbor_Phi = ave_Phi[neighbor_id]
+
+        # Calculate the angular differences for Chi and Phi
+        chi_diff = angular_difference(cell_Chi, neighbor_Chi)
+        phi_diff = angular_difference(cell_Phi, neighbor_Phi)
+
+        # Combine the differences to estimate misorientation (simplified)
+        # Note: This is a simplification and may not accurately represent crystallographic misorientation
+        misorientation = np.sqrt(chi_diff**2 + phi_diff**2)
+        
+        misorientations.append(misorientation)
+
+# Calculate the average misorientation
+average_misorientation = np.mean(misorientations) if misorientations else 0
+
+plt.figure()
+plt.hist(misorientations, bins=25)
+plt.xlabel('Misorientation')
+plt.ylabel('Count')
+plt.title('Misorientation Between Each Cell and Its Neighbors')
+
+# Fit a Rayleigh distribution to the data
+param = rayleigh.fit(misorientations)
+param1 = chi.fit(misorientations)
+param2 = maxwell.fit(misorientations)
+mean, var, skew, kurt = rayleigh.stats(moments='mvsk')
+
+df = param1[0]
+
+print("Degrees of freedom:", df)
+
+# Prepare data for the fitted distribution plot
+min_misorientation, max_misorientation = min(misorientations), max(misorientations)
+fit_x = np.linspace(min_misorientation, max_misorientation, 100)
+fit_y = rayleigh.pdf(fit_x, *param)
+chi_y= chi.pdf(fit_x, *param1)
+max_y= maxwell.pdf(fit_x, *param2)
+
+plt.figure()
+# Plot the histogram of misorientations
+plt.hist(misorientations, bins=35, density=True)
+
+# Overlay the fitted Rayleigh distribution curve
+plt.plot(fit_x, fit_y, lw=2)
+plt.plot(fit_x, chi_y, lw=2)
+plt.plot(fit_x, max_y, lw=2)
+plt.legend(['Rayleigh', 'Chi', 'Maxwell'])
+
+# Display the main fitting parameters (scale parameter) on the plot
+plt.title(f'Misorientation Distribution\nFitted mean = {average_misorientation:.2f}, sigma = {var:.2f}')
+plt.xlabel('Misorientation')
+
+# Show the plot
+plt.show()

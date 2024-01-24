@@ -283,7 +283,7 @@ y_indices, x_indices = np.where(combined_mask)
 
 
 # Compute the 2D histogram
-Z, xedges, yedges = np.histogram2d(orientations[:, 1], orientations[:, 0], bins=[25, 22])
+Z, xedges, yedges = np.histogram2d(orientations[:, 1], orientations[:, 0], bins=[25, 22]) 
 
 # Create meshgrid
 X, Y = np.meshgrid(xedges[:-1], yedges[:-1], indexing='ij')
