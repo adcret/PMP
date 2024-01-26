@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 import matplotlib.colors as colors
 from scipy.ndimage import label
 from skimage.measure import regionprops
-from scipy.stats import lognorm, rayleigh, chi
+from scipy.stats import lognorm, rayleigh, chi, weibull_min
 import pandas as pd
 
 
@@ -231,12 +231,6 @@ for _ in range(len(com_chi)):
             sizes1.append(size_from_area1)
 
 
-            # Fit a log-normal distribution to the data
-            shape, loc, scale = lognorm.fit(size_from_area)
-            print(lognorm.fit(size_from_area))
-            mu = np.log(scale)
-            sigma = shape
-
             # Fit a chi distribution to the data
             params = chi.fit(size_from_area)
             print("Fitted parameters for first dataset:", params)
@@ -335,17 +329,17 @@ for _ in range(len(com_chi)):
 
                 # If there is no overlap and the region meets the size criteria, add it to the list
                 if not overlap and region.area >= min_cell_size:
-                    filtered.append(region)
+                    filtered_props.append(region)
 
             # Iterate over each region in props
-            for region in filtered:
+            #for region in filtered:
                 # Get the coordinates of the region
-                region_coords = region.coords
+                #region_coords = region.coords
 
                 # Check if any of the coordinates overlap with the mask
-                overlap = np.any(dilated_mask[region_coords[:, 0], region_coords[:, 1]])
-                if not overlap:
-                    filtered_props.append(region)
+                #overlap = np.any(dilated_mask[region_coords[:, 0], region_coords[:, 1]])
+                #if not overlap:
+                    #filtered_props.append(region)
 
             nr_cells1 = len(filtered_props)
 
@@ -361,21 +355,21 @@ for _ in range(len(com_chi)):
 
 
             # Fit a log-normal distribution to the data
-            loc, scale = rayleigh.fit(size_from_area)
-            print(rayleigh.fit(size_from_area))
+            shape, loc, scale = lognorm.fit(size_from_area)
+            print(lognorm.fit(size_from_area))
 
             # Generate values from the fitted distribution
             x = np.linspace(min(size_from_area), max(size_from_area), 100)
             X.append(x)
-            pdf = rayleigh.pdf(x, loc, scale)
+            pdf = lognorm.pdf(x, loc, scale)
             PDF.append(pdf)
 
             # Repeat for the second dataset
-            loc1, scale1 = rayleigh.fit(size_from_area1)
+            shape1, loc1, scale1 = lognorm.fit(size_from_area1)
 
             x1 = np.linspace(min(size_from_area1), max(size_from_area1), 100)
             X1.append(x1)
-            pdf1 = rayleigh.pdf(x1, loc1, scale1)
+            pdf1 = lognorm.pdf(x1, loc1, scale1)
             PDF1.append(pdf1)
 
             # Display mean and median size
@@ -397,9 +391,9 @@ for _ in range(len(com_chi)):
     print('A line was added to the excel file.')
 
 
-df = pd.DataFrame(dict([(k, pd.Series(v)) for k, v in excel_data.items()]))
-df.to_excel('cell_sizes_kernel2.xlsx', index=False)
-print("Excel file 'cell_sizes_kernel2.xlsx' has been saved.")
+#df = pd.DataFrame(dict([(k, pd.Series(v)) for k, v in excel_data.items()]))
+#df.to_excel('cell_sizes_kernel2.xlsx', index=False)
+#print("Excel file 'cell_sizes_kernel2.xlsx' has been saved.")
 
 
 # print(av_cell)
@@ -411,8 +405,8 @@ n = len(sizes1)  # Or the length of X or PDF, assuming they are all the same
 
 
 min_length = min(len(X1), len(PDF1), len(sizes1), len(av_cell1))
-print(min_length)
-print(len(X1), len(PDF1), len(sizes1), len(av_cell1))
+
+
 # Create a figure and axes
 # Use math.ceil to handle odd numbers of plots
 rows = n // 2 if n % 2 == 0 else n // 2 + 1
@@ -421,7 +415,7 @@ fig, axs = plt.subplots(rows, 2, figsize=(10, 5))  # Adjust the figsize as neede
 # Flatten the axs array for easy indexing in case of a grid
 axs = axs.flatten()
 
-for i in range(min_length):
+for i in range(min_length)[2:]:
     # Plot histogram
     axs[i].hist(sizes1[i], bins=50, range=(0, 25), density=True, alpha=1)  # Adjust alpha for transparency
 

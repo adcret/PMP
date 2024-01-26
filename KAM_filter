@@ -280,12 +280,20 @@ mosa1 = colors.hsv_to_rgb(mosa)  # Convert HSV to RGB
 # Overlay skeleton on Mosa overlay and plot
 Mosa_overlay = np.copy(mosa1)  # Assuming mosa is in RGB format
 Mosa_overlay[skel_Img] = [0, 0, 0]
-plt.figure()
+
+# Create a mask for the red pixels
+red_mask = (Mosa_overlay[:, :, 0] == 1) & (Mosa_overlay[:, :, 1] == 0) & (Mosa_overlay[:, :, 2] == 0)
+
+# Apply the mask and change red pixels to white
+Mosa_overlay[red_mask] = [1, 1, 1]
+
+plt.figure(figsize=(9, 6))
 plt.imshow(Mosa_overlay, extent=[0, pixel_x * row_size, 0, pixel_y * col_size])
 plt.xlabel('x in micrometer')
 plt.ylabel('y in micrometer')
+plt.xlim(200, 800)
 plt.axis('equal')
-plt.title('KAM skeleton overlay on Mosa map with highlighted skeleton')
+plt.title('KAM skeleton overlay on Mosa map with highlighted skeleton 838')
 
 ## plt.draw()
 ## plt.show()
@@ -504,7 +512,7 @@ pdf = lognorm.pdf(x, shape, loc, scale)
 plt.figure()
 plt.hist(size_from_area1, bins=25, range=(0.0, 25.0), density=True, alpha=1)
 plt.plot(x, pdf, 'r-', label='Fitted log-normal distribution')
-plt.xlabel('From areas: size in mu')s
+plt.xlabel('From areas: size in mu')
 plt.ylabel('Probability density')
 plt.title('Fitted log-normal distribution')
 plt.legend()
@@ -936,21 +944,21 @@ min_misorientation, max_misorientation = min(misorientations), max(misorientatio
 fit_x = np.linspace(min_misorientation, max_misorientation, 100)
 fit_y = rayleigh.pdf(fit_x, *param)
 chi_y= chi.pdf(fit_x, *param1)
-max_y= maxwell.pdf(fit_x, *param2)
+#max_y= maxwell.pdf(fit_x, *param2)
 
-plt.figure()
+plt.figure(figsize=(9, 6))
 # Plot the histogram of misorientations
 plt.hist(misorientations, bins=35, density=True)
 
 # Overlay the fitted Rayleigh distribution curve
-plt.plot(fit_x, fit_y, lw=2)
-plt.plot(fit_x, chi_y, lw=2)
-plt.plot(fit_x, max_y, lw=2)
-plt.legend(['Rayleigh', 'Chi', 'Maxwell'])
+#plt.plot(fit_x, fit_y, lw=4)
+plt.plot(fit_x, chi_y, lw=4, color='red')
+#plt.plot(fit_x, max_y, lw=2)
+plt.legend(['Chi'])
 
 # Display the main fitting parameters (scale parameter) on the plot
-plt.title(f'Misorientation Distribution\nFitted mean = {average_misorientation:.2f}, sigma = {var:.2f}')
-plt.xlabel('Misorientation')
+plt.title(f'Misorientation Distribution\nFitted mean = {average_misorientation:.2f}, sigma = {var:.2f}', fontsize=20)
+plt.xlabel('Misorientation in degrees', fontsize=20)
 
 # Show the plot
 plt.show()

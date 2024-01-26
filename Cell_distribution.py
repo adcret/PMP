@@ -307,9 +307,9 @@ for _ in range(len(com_chi)):
     area_sizes.append(sizes)
     area_sizes1.append(sizes1) 
 
-df = pd.DataFrame(dict([(k, pd.Series(v)) for k, v in excel_data.items()]))
-df.to_excel('cell_sizes_kernel2.xlsx', index=False)
-print("Excel file 'cell_sizes_kernel2.xlsx' has been saved.")
+#df = pd.DataFrame(dict([(k, pd.Series(v)) for k, v in excel_data.items()]))
+#df.to_excel('cell_sizes_kernel2.xlsx', index=False)
+#print("Excel file 'cell_sizes_kernel2.xlsx' has been saved.")
 
 area_sizes = list(area_sizes)
 area_sizes1 = list(area_sizes1)
@@ -323,7 +323,7 @@ def fit_and_plot_lognorm(data, ax, label):
     # Remove NaNs and infinite values from data
     data = np.array(data)
     data = data[np.isfinite(data)]
-    data = data[data > 0]  # Ensure data is non-negative for log-normal distribution
+    data = data[data < 25]  # remove outliers
 
     # Handle empty data or data with insufficient values
     if len(data) < 2:
@@ -334,14 +334,20 @@ def fit_and_plot_lognorm(data, ax, label):
     try:
         # Fit the log-normal distribution to the data
         params = lognorm.fit(data)
+        shape, loc, scale = params
+        mu = np.log(scale)
+        ratio_mu_sigma = mu / shape
         x = np.linspace(min(data), max(data), 100)
         pdf = lognorm.pdf(x, *params)
         ax.hist(data, bins=50, range=(0, 25), density=True, alpha=0.9)
-        ax.plot(x, pdf, 'r-')
+        ax.plot(x, pdf, 'r-', lw = 4)
         mean_size = np.mean(data)
-        ax.annotate(f'Mean: {mean_size:.2f} mu', xy=(0.5, 0.7), xycoords='axes fraction', ha='center', va='center')
+        ax.annotate(f'Mean: {mean_size:.2f} mu', xy=(0.5, 0.7), xycoords='axes fraction', ha='center', va='center', fontsize=12)
+        ax.annotate(f'Mu/Sigma Ratio: {ratio_mu_sigma:.2f}', xy=(0.5, 0.6), xycoords='axes fraction', ha='center', va='center', fontsize=12)
+        ax.set_xlabel('Cell Size', fontsize=20)
+        ax.set_ylabel('PDF', fontsize=20)
         ax.set_xlim(0, 25)
-        ax.set_title(label)
+        ax.set_title(label, fontsize=20)
     except Exception as e:
         print(f"Error fitting {label}: {e}")
         ax.text(0.5, 0.5, 'Error in fitting', horizontalalignment='center', verticalalignment='center', transform=ax.transAxes)
@@ -349,13 +355,13 @@ def fit_and_plot_lognorm(data, ax, label):
 # Loop over each dataset in area_sizes1
 for i, dataset in enumerate(area_sizes1):
     # Create a new figure for each dataset
-    fig, ax = plt.subplots(figsize=(5, 5))  # Single plot for log-normal distribution
+    fig, ax = plt.subplots(figsize=(9, 6))  # Single plot for log-normal distribution
 
     # Fit and plot log-normal distribution for the current dataset
     fit_and_plot_lognorm(dataset, ax, 'Lognormal Distribution')
 
     # Set the title for the figure as the name of the sample
-    fig.suptitle(names[i], fontsize=24)
+    #fig.suptitle(names[i], fontsize=24)
 
     # Adjust layout and show the figure
     plt.tight_layout(rect=[0, 0.03, 1, 0.95])  
@@ -395,13 +401,13 @@ def fit_and_plot_normal_log(data, ax, label):
 # Loop over each dataset in area_sizes1
 for i, dataset in enumerate(area_sizes1):
     # Create a new figure for each dataset
-    fig, ax = plt.subplots(figsize=(5, 5))  # Single plot for normal distribution of log data
+    fig, ax = plt.subplots(figsize=(8, 6))  # Single plot for normal distribution of log data
 
     # Fit and plot normal distribution to the log of the current dataset
     fit_and_plot_normal_log(dataset, ax, 'Normal Distribution of Log Data')
 
     # Set the title for the figure as the name of the sample
-    fig.suptitle(names[i], fontsize=24)
+    #fig.suptitle(names[i], fontsize=24)
 
     # Adjust layout and show the figure
     plt.tight_layout(rect=[0, 0.03, 1, 0.95])  

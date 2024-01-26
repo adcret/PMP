@@ -303,9 +303,9 @@ for _ in range(len(com_chi)):
     area_sizes.append(sizes)
     area_sizes1.append(sizes1) 
 
-df = pd.DataFrame(dict([(k, pd.Series(v)) for k, v in excel_data.items()]))
-df.to_excel('cell_sizes_kernel2.xlsx', index=False)
-print("Excel file 'cell_sizes_kernel2.xlsx' has been saved.")
+#df = pd.DataFrame(dict([(k, pd.Series(v)) for k, v in excel_data.items()]))
+#df.to_excel('cell_sizes_kernel2.xlsx', index=False)
+#print("Excel file 'cell_sizes_kernel2.xlsx' has been saved.")
 
 area_sizes = list(area_sizes)
 area_sizes1 = list(area_sizes1)
@@ -316,9 +316,9 @@ plt.plot(av_cell1, 'o')
 
 # Define a function to fit distributions and plot
 def fit_and_plot_distribution(dist, data, ax, label):
-    # Remove NaNs and infinite values from data
+    # Remove NaNs and infinite values from data as well as values above 25 microns
     data = np.array(data)
-    data = data[np.isfinite(data)]
+    data = data[np.isfinite(data) & (data < 25)]
 
     # Ensure data is non-negative for certain distributions
     if dist in [lognorm, weibull_min, gamma]:
@@ -336,12 +336,16 @@ def fit_and_plot_distribution(dist, data, ax, label):
         pdf = dist.pdf(x, *params)
         ax.hist(data, bins=50, range=(0, 25), density=True, alpha=0.9)
         ax.plot(x, pdf, 'r-')
-        mean_size = np.mean(data)
+        # Perform the Kolmogorov-Smirnov test
         D, p_value = kstest(data, lambda x: dist.cdf(x, *params))
-        ax.annotate(f'KS test: D={D:.2f}, p={p_value:.2f}', xy=(0.5, 0.8), xycoords='axes fraction', ha='center', va='center')
-        ax.annotate(f'Mean: {mean_size:.2f} mu', xy=(0.5, 0.7), xycoords='axes fraction', ha='center', va='center')
+
+        # Annotate the plot with the KS test result
+        ax.text(0.3, 0.75, f'Kolmogorov Smirnov\nD={D:.4e}\nP={p_value:.4e}', transform=ax.transAxes)
+
         ax.set_xlim(0, 25)
         ax.set_title(label)
+        ax.set_xlabel('Cell size (mu)')
+        ax.set_ylabel('PDF')
     except Exception as e:
         print(f"Error fitting {label}: {e}")
         ax.text(0.5, 0.5, 'Error in fitting', horizontalalignment='center', verticalalignment='center', transform=ax.transAxes)
