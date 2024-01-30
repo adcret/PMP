@@ -196,7 +196,7 @@ for _ in range(len(com_chi)):
     sizes = []
     sizes1 = []
     for value in KAM_list:
-        KAM_threshold = value
+        KAM_threshold = 0.041
         KAM_filter = np.zeros_like(KAM, dtype=bool)
 
         # Apply the threshold to create the filter
@@ -209,7 +209,7 @@ for _ in range(len(com_chi)):
         if 0.69 < area_ratio < 0.72 or area_ratio < 0.65:
             if area_ratio < 0.65:
                 # Update KAM_threshold and recompute KAM_filter
-                KAM_threshold = 0.0015
+                KAM_threshold = 0.041
                 KAM_filter = np.zeros_like(KAM, dtype=bool)
                 KAM_filter[grain_mask & (KAM > KAM_threshold)] = True
 
@@ -325,7 +325,7 @@ def fit_and_plot_distribution(dist, data, ax, label):
         data = data[data > 0]
 
     # Handle empty data or data with insufficient values
-    if len(data) < 2:
+    if len(data) < 20:
         ax.text(0.5, 0.5, 'Insufficient data', horizontalalignment='center', verticalalignment='center', transform=ax.transAxes)
         ax.set_title(label)
         return
@@ -340,10 +340,9 @@ def fit_and_plot_distribution(dist, data, ax, label):
         D, p_value = kstest(data, lambda x: dist.cdf(x, *params))
 
         # Annotate the plot with the KS test result
-        ax.text(0.3, 0.75, f'Kolmogorov Smirnov\nD={D:.4e}\nP={p_value:.4e}', transform=ax.transAxes)
-
+        ax.text(0.3, 0.75, f'Kolmogorov-Smirnov Test\nD={D:.4e}\nP={p_value:.4e}', transform=ax.transAxes, fontsize=10)
         ax.set_xlim(0, 25)
-        ax.set_title(label)
+        ax.set_title(label, fontsize=16)
         ax.set_xlabel('Cell size (mu)')
         ax.set_ylabel('PDF')
     except Exception as e:
@@ -362,9 +361,6 @@ for i, dataset in enumerate(area_sizes1):
     fit_and_plot_distribution(weibull_min, dataset, axs[2], 'Weibull Distribution')
     fit_and_plot_distribution(gamma, dataset, axs[3], 'Gamma Distribution')
     fit_and_plot_distribution(rayleigh, dataset, axs[4], 'Rayleigh Distribution')
-
-    # Set the title for the figure as the name of the sample
-    fig.suptitle(names[i], fontsize=24)
 
     # Adjust layout and show the figure
     plt.tight_layout(rect=[0, 0.03, 1, 0.95])  

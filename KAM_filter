@@ -947,16 +947,13 @@ chi_y= chi.pdf(fit_x, *param1)
 #max_y= maxwell.pdf(fit_x, *param2)
 
 plt.figure(figsize=(9, 6))
-# Plot the histogram of misorientations
+# Plot the histogram of misorientations with the fitted distribution
 plt.hist(misorientations, bins=35, density=True)
-
-# Overlay the fitted Rayleigh distribution curve
-#plt.plot(fit_x, fit_y, lw=4)
 plt.plot(fit_x, chi_y, lw=4, color='red')
-#plt.plot(fit_x, max_y, lw=2)
 plt.legend(['Chi'])
-
-# Display the main fitting parameters (scale parameter) on the plot
+#plt.plot(fit_x, fit_y, lw=4)
+#plt.plot(fit_x, max_y, lw=2)
+plt.subplots_adjust(left=0.1, right=0.9, top=0.9, bottom=0.1)
 plt.title(f'Misorientation Distribution\nFitted mean = {average_misorientation:.2f}, sigma = {var:.2f}', fontsize=20)
 plt.xlabel('Misorientation in degrees', fontsize=20)
 

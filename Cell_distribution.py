@@ -45,65 +45,17 @@ mean_sizes = []
 filtered_cell_counts = []
 
 area_sizes, area_sizes1 = [], []
+grain_size = []
+cell_density = []
+v_fraction = []
+cell_number = []
 
-def process_image(KAM_threshold, KAM_filter, Mosa_Img, mosa, pixel_x, pixel_y):
-    # Perform morphological operations
-    se = disk(1)
-    KAM2 = binary_erosion(KAM_filter, se)
-    KAM_mask = binary_dilation(KAM2, se)
-
-    # Skeletonize the KAM mask
-    skel_Img = skeletonize(KAM_mask)
-
-    # Overlay on Mosa_Img
-    Mosa_Img_overlay = np.copy(Mosa_Img)
-    Mosa_Img_overlay[skel_Img] = [2.5, 2.5, 2.5]
-
-    # Convert HSV to RGB and overlay skeleton
-    mosa1 = colors.hsv_to_rgb(mosa)
-    Mosa_overlay = np.copy(mosa1)
-    Mosa_overlay[skel_Img] = [0, 0, 0]
-
-    # Invert and dilate the skeleton image
-    BW_img = ~binary_dilation(skel_Img, disk(1))
-
-    # Label connected components
-    labeled_array, num_features = label(BW_img)
-    nr_cells = num_features
-    print(f"Number of cells: {nr_cells}")
-
-    # Get region properties
-    props = regionprops(labeled_array)
-    min_cell_size = 10
-
-    # Create masks
-    mask = np.all(mosa == [1, 1, 1], axis=-1)
-    erroded_mask = binary_erosion(mask, disk(3))
-    dilated_mask = binary_erosion(erroded_mask, disk(3))
-    dilated_mask = binary_dilation(dilated_mask, disk(3))
-    dilated_mask = binary_dilation(dilated_mask, disk(20))
-
-    # Filter regions
-    filtered_props = []
-    for region in props:
-        region_coords = region.coords
-        overlap = np.any(erroded_mask[region_coords[:, 0], region_coords[:, 1]])
-        if not overlap and region.area >= min_cell_size:
-            filtered_props.append(region)
-
-    nr_cells1 = len(filtered_props)
-    print(f"Number of cells after filtering: {nr_cells1}")
-
-    # Calculate areas and centroids
-    areas_all = [prop.area * pixel_x * pixel_y for prop in props]
-    areas_all1 = [prop.area * pixel_x * pixel_y for prop in filtered_props]
-    size_from_area = np.sqrt(areas_all)
-    size_from_area1 = np.sqrt(areas_all1)
-
-    return size_from_area, size_from_area1
+major_axes = []
+minor_axes = []
+orientations = []
 
 
-
+# Loop over all data sets
 for _ in range(len(com_chi)):
     chi_file = fabio.open(path + com_chi[_])
     A = chi_file.data
@@ -146,6 +98,12 @@ for _ in range(len(com_chi)):
     # Perform dilation twice
     grain_mask = binary_dilation(grain1, se)
     grain_mask = binary_dilation(grain_mask, se)
+
+    # Calculate the area of the grain mask
+    grain_mask_area = np.sum(grain_mask) * pixel_x * pixel_y 
+    
+    grain_size.append(grain_mask_area)
+    print(f"Grain mask area: {grain_mask_area:.2f} um^2")
 
     # Set pixels outside the mask to slightly above max values
     Chi_Img[~grain_mask] = max_chi * 1.8
@@ -190,16 +148,13 @@ for _ in range(len(com_chi)):
                 KAM[ii, jj] = np.sum(kernel_diff) / nr_pixels_ROI
 
 
-
-
-
     # Create KAM filter and calculate area ratio
     KAM_list = np.arange(0, 0.085, 0.001).tolist()
     
     sizes = []
     sizes1 = []
     for value in KAM_list:
-        KAM_threshold = value
+        KAM_threshold = 0.041
         KAM_filter = np.zeros_like(KAM, dtype=bool)
 
         # Apply the threshold to create the filter
@@ -212,7 +167,7 @@ for _ in range(len(com_chi)):
         if 0.69 < area_ratio < 0.72 or area_ratio < 0.65:
             if area_ratio < 0.65:
                 # Update KAM_threshold and recompute KAM_filter
-                KAM_threshold = 0.0015
+                KAM_threshold = 0.041
                 KAM_filter = np.zeros_like(KAM, dtype=bool)
                 KAM_filter[grain_mask & (KAM > KAM_threshold)] = True
 
@@ -236,6 +191,13 @@ for _ in range(len(com_chi)):
 
             # Invert and dilate the skeleton image
             BW_img = ~binary_dilation(skel_Img, disk(1))
+            WB_img = ~BW_img
+
+
+            # Calculate the number of pixels in the skeleton and remove from the grain mask area for area fraction calculation
+            mask_pixels = np.sum(WB_img) * pixel_x * pixel_y
+            grain_mask_area = grain_mask_area - mask_pixels
+
 
             # Label connected components
             labeled_array, num_features = label(BW_img)
@@ -245,7 +207,7 @@ for _ in range(len(com_chi)):
             # Get region properties
             props = regionprops(labeled_array)
 
-            min_cell_size = 10  # minimum size in pixel for a cell to be considered
+            min_cell_size = 5  # minimum size in pixel for a cell to be considered
 
             mask = np.all(mosa == [1, 1, 1], axis=-1)
 
@@ -283,19 +245,72 @@ for _ in range(len(com_chi)):
     #                filtered_props.append(region)
 
 
-
+             # Remove the cells that are too large this is done because in some dataset the scans are incomplete, leading to 
+            filtered_props = [prop for prop in filtered_props if prop.area * pixel_x * pixel_y <= 600]
             nr_cells1 = len(filtered_props)
             filtered_cell_counts.append(nr_cells1)
 
             print(f"Number of cells after filtering: {nr_cells1}")
 
+            nr_cells_per_unit_area = nr_cells / grain_mask_area
+            print(f"Number of cells per unit area: {nr_cells_per_unit_area}")
+
+            nr_cells1_per_unit_area = nr_cells1 / grain_mask_area
+            print(f"Number of cells after filtering per unit area: {nr_cells1_per_unit_area}")
+
+            cell_density.append(nr_cells1_per_unit_area)
+
             # Calculate areas and centroids
-            areas_all = [prop.area * pixel_x * pixel_y for prop in props][0:] 
+            areas_all = [prop.area * pixel_x * pixel_y for prop in props][1:] 
             areas_all1 = [prop.area * pixel_x * pixel_y for prop in filtered_props][0:] # Skip exterior [1:]
+
+            #look at volume fraction of cells
+            v_fraction.append(np.sum(areas_all1) / grain_mask_area)
+
+
+
             size_from_area = np.sqrt(areas_all)
             size_from_area1 = np.sqrt(areas_all1)
             sizes.append(size_from_area)
             sizes1.append(size_from_area1)
+            
+
+            # Get the major and minor axis lengths of the filtered cells to check for anisotropy
+            for prop in filtered_props:
+                major_axes.append(prop.major_axis_length)
+                minor_axes.append(prop.minor_axis_length)
+
+            #get the orientation of the major axis
+            for prop in filtered_props:
+                orientations.append(prop.orientation)
+                
+            
+            # Calculate the ratio of minor to major axis lengths
+            ratios = [minor/major if major != 0 else 0 for minor, major in zip(minor_axes, major_axes)]
+            # Plot histogram
+            plt.figure()
+            plt.hist(ratios, bins=np.linspace(0, 1, 50))
+            plt.xlabel('Minor/Major Axis Ratio')
+            plt.ylabel('Frequency')
+            plt.title('Minor to Major Axis Ratios')
+            
+            # Plot histogram of orientations
+            plt.figure()
+            plt.hist(orientations, bins=np.linspace(-np.pi/2, np.pi/2, 50))
+            plt.xlabel('Orientation (rad)')
+            plt.ylabel('Frequency')
+            plt.title('Orientations of Major Axis')
+
+            plt.figure()
+            plt.scatter(ratios, orientations)
+            plt.xlabel('Minor/Major Axis Ratio')
+            plt.ylabel('Orientation (rad)')
+            plt.title('Minor to Major Axis Ratios vs Orientations')
+            plt.show()
+
+            mean_ratio = np.mean(ratios)
+            median_ratio = np.median(ratios)
+            print(f"Mean ratio: {mean_ratio:.2f}, Median ratio: {median_ratio:.2f}")
 
             break
     column_name = names[_]  # Using the name from the names list
@@ -310,12 +325,43 @@ for _ in range(len(com_chi)):
 #df = pd.DataFrame(dict([(k, pd.Series(v)) for k, v in excel_data.items()]))
 #df.to_excel('cell_sizes_kernel2.xlsx', index=False)
 #print("Excel file 'cell_sizes_kernel2.xlsx' has been saved.")
+    
+#calculate the cell density of normalised number of cells
+for i in range(len(cell_density)):
+    cell_density[i] = cell_density[i] * grain_size[0]
+
+
+# Calculate the ratio of minor to major axis lengths
+ratios = [minor/major if major != 0 else 0 for minor, major in zip(minor_axes, major_axes)]
+
+
 
 area_sizes = list(area_sizes)
 area_sizes1 = list(area_sizes1)
-# print(av_cell)
+
+# Get the strain steps for plot titles
+strain = [0.005, 0.008, 0.013, 0.024, 0.035, 0.046]
+
+# Plotting grain sizes 
 plt.figure()
-plt.plot(av_cell1, 'o')
+plt.plot(strain, grain_size, 'o-')
+plt.xlabel('$\epsilon$', fontsize=20)
+plt.ylabel('$\mu m^2$')
+plt.title('Grain Size')
+
+# Plotting number of cells
+plt.figure(figsize=(9, 6))
+plt.plot(strain, cell_density, 'o-', label='Number of Cells normalised per area')
+plt.xlabel('$\epsilon$', fontsize=20)
+plt.ylabel('Number of cells')
+plt.title('Normalised Number of Cells')
+
+# Plotting volume fraction of cells
+plt.figure(figsize=(9, 6))
+plt.plot(strain, v_fraction, 'o-', label='Volume Fraction of Cells')
+plt.xlabel('$\epsilon$', fontsize=20)
+plt.ylabel('Volume Fraction')
+plt.title('Volume Fraction of Cells')
 
 
 # Define a function to fit distributions and plot
@@ -326,7 +372,7 @@ def fit_and_plot_lognorm(data, ax, label):
     data = data[data < 25]  # remove outliers
 
     # Handle empty data or data with insufficient values
-    if len(data) < 2:
+    if len(data) < 10:
         ax.text(0.5, 0.5, 'Insufficient data', horizontalalignment='center', verticalalignment='center', transform=ax.transAxes)
         ax.set_title(label)
         return
@@ -339,18 +385,22 @@ def fit_and_plot_lognorm(data, ax, label):
         ratio_mu_sigma = mu / shape
         x = np.linspace(min(data), max(data), 100)
         pdf = lognorm.pdf(x, *params)
-        ax.hist(data, bins=50, range=(0, 25), density=True, alpha=0.9)
+        ax.hist(data, bins=50, range=(0, 18), density=True, alpha=0.9)
         ax.plot(x, pdf, 'r-', lw = 4)
         mean_size = np.mean(data)
-        ax.annotate(f'Mean: {mean_size:.2f} mu', xy=(0.5, 0.7), xycoords='axes fraction', ha='center', va='center', fontsize=12)
-        ax.annotate(f'Mu/Sigma Ratio: {ratio_mu_sigma:.2f}', xy=(0.5, 0.6), xycoords='axes fraction', ha='center', va='center', fontsize=12)
+        D, p_value = kstest(data, lambda x: lognorm.cdf(x, *params))
+        ax.annotate(f'p-value={p_value:.2e}', xy=(0.5, 0.8), xycoords='axes fraction', ha='center', va='center', fontsize=14)
+        ax.annotate(f'Mean: {mean_size:.2f} mu', xy=(0.5, 0.7), xycoords='axes fraction', ha='center', va='center', fontsize=14)
+        ax.annotate(f'Mu/Sigma Ratio: {ratio_mu_sigma:.2f}', xy=(0.5, 0.6), xycoords='axes fraction', ha='center', va='center', fontsize=14)
         ax.set_xlabel('Cell Size', fontsize=20)
         ax.set_ylabel('PDF', fontsize=20)
-        ax.set_xlim(0, 25)
-        ax.set_title(label, fontsize=20)
+        ax.set_xlim(0, 18)
+        #ax.set_title(label, fontsize=20)
     except Exception as e:
         print(f"Error fitting {label}: {e}")
         ax.text(0.5, 0.5, 'Error in fitting', horizontalalignment='center', verticalalignment='center', transform=ax.transAxes)
+
+
 
 # Loop over each dataset in area_sizes1
 for i, dataset in enumerate(area_sizes1):
@@ -361,10 +411,8 @@ for i, dataset in enumerate(area_sizes1):
     fit_and_plot_lognorm(dataset, ax, 'Lognormal Distribution')
 
     # Set the title for the figure as the name of the sample
-    #fig.suptitle(names[i], fontsize=24)
-
-    # Adjust layout and show the figure
-    plt.tight_layout(rect=[0, 0.03, 1, 0.95])  
+    strain_step = strain[i]
+    fig.suptitle(f'${{\\epsilon}}$ = {strain_step:.3f}', fontsize=20)
 
 
 def fit_and_plot_normal_log(data, ax, label):
@@ -398,6 +446,8 @@ def fit_and_plot_normal_log(data, ax, label):
         print(f"Error fitting {label}: {e}")
         ax.text(0.5, 0.5, 'Error in fitting', horizontalalignment='center', verticalalignment='center', transform=ax.transAxes)
 
+
+
 # Loop over each dataset in area_sizes1
 for i, dataset in enumerate(area_sizes1):
     # Create a new figure for each dataset
@@ -407,7 +457,7 @@ for i, dataset in enumerate(area_sizes1):
     fit_and_plot_normal_log(dataset, ax, 'Normal Distribution of Log Data')
 
     # Set the title for the figure as the name of the sample
-    #fig.suptitle(names[i], fontsize=24)
+    #fig.suptitle('$epsilon$' + strain[i], fontsize=18)
 
     # Adjust layout and show the figure
     plt.tight_layout(rect=[0, 0.03, 1, 0.95])  
@@ -426,18 +476,18 @@ for i, dataset in enumerate(area_sizes1):
     
 
 # Plotting mean sizes (ignoring first two datasets)
-plt.figure(figsize=(10, 5))
-plt.plot(names[2:], mean_sizes[2:], 'o-', label='Mean Sizes')
-plt.xlabel('Dataset')
-plt.ylabel('Mean Size')
-plt.title('Mean Size per Dataset')
+plt.figure(figsize=(9, 6))
+plt.plot(strain[2:], mean_sizes[2:], 'o-', label='Mean Sizes')
+plt.xlabel('$\epsilon$', fontsize=20)
+plt.ylabel('$\mu$m')
+plt.title('Mean Size')
 plt.legend()
 
 
 # Plotting number of filtered cells (ignoring first two datasets)
 plt.figure(figsize=(10, 5))
 plt.plot(names[2:], filtered_cell_counts[2:], 'o-', label='Number of Filtered Cells')
-plt.xlabel('Dataset')
+plt.xlabel('whatever')
 plt.ylabel('Filtered Cells Count')
 plt.title('Number of Filtered Cells per Dataset')
 plt.legend()

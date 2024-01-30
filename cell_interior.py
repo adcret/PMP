@@ -141,7 +141,7 @@ for _ in range(len(com_chi)):
     KAM_list = np.arange(0, 0.085, 0.001).tolist()
 
     for value in KAM_list:
-        KAM_threshold = value
+        KAM_threshold = 0.041
         KAM_filter = np.zeros_like(KAM, dtype=bool)
 
         # Apply the threshold to create the filter
@@ -154,7 +154,7 @@ for _ in range(len(com_chi)):
         if 0.69 < area_ratio < 0.71:
             break
         elif area_ratio < 0.69:
-            KAM_threshold = 0.0015
+            KAM_threshold = 0.041
             break
 
     # Calculate the area ratio
@@ -408,7 +408,22 @@ for _ in range(len(com_chi)):
     size_from_area1 = np.sqrt(areas_all1)
 
     # Calculate the average FWHM value for each cell
-    ave_FWHM = {prop.label: np.mean([fwhm for fwhm in FWHM_Img[prop.coords[:, 0], prop.coords[:, 1]] if fwhm <= 3.5]) for prop in filtered_props}
+    #ave_FWHM = {prop.label: np.mean([fwhm for fwhm in FWHM_Img[prop.coords[:, 0], prop.coords[:, 1]] if fwhm <= 3.5]) for prop in filtered_props}
+    ave_FWHM = {}
+
+    for prop in filtered_props:
+        # Create a binary mask for the current object
+        mask = np.zeros(FWHM_Img.shape, dtype=bool)
+        mask[prop.coords[:, 0], prop.coords[:, 1]] = True
+
+        # Dilate the mask
+        dilated_mask = binary_dilation(mask, disk(1))
+
+        # Find the coordinates of the dilated object
+        dilated_coords = np.array(np.nonzero(dilated_mask)).T
+
+        # Calculate the average FWHM for the dilated object
+        ave_FWHM[prop.label] = np.mean([fwhm for fwhm in FWHM_Img[dilated_coords[:, 0], dilated_coords[:, 1]] if fwhm <= 3.5])
     std_FWHM = {prop.label: np.std([fwhm for fwhm in FWHM_Img[prop.coords[:, 0], prop.coords[:, 1]] if fwhm <= 3.5]) for prop in filtered_props}
     fwhm_FWHM = {prop.label: std_FWHM[prop.label] * 2.355 for prop in filtered_props}
 
@@ -427,59 +442,61 @@ for _ in range(len(com_chi)):
     #plt.xlabel('Cell Size in Microns (sqrt of area)')
     #plt.ylabel('Average FWHM (radians)')
     #plt.title('Average FWHM vs Cell Size')
+    if len(size_from_area1) >= 2 and len(fwhm_ave_values) >= 2:
+        correlation_coefficient_FWHM = pearsonr(size_from_area1, fwhm_fwhm_values)
+        print(f"Pearson correlation coefficient for the FWHM: {correlation_coefficient_FWHM[0]:.4e}")
+        print(f"Pearson correlation p-value for the FWHM: {correlation_coefficient_FWHM[1]:.4e}")
 
-    correlation_coefficient_FWHM = pearsonr(size_from_area1, fwhm_fwhm_values)
-    print(f"Pearson correlation coefficient for the FWHM: {correlation_coefficient_FWHM[0]:.4e}")
-    print(f"Pearson correlation p-value for the FWHM: {correlation_coefficient_FWHM[1]:.4e}")
+        coefficients_FWHM = np.polyfit(size_from_area1, fwhm_fwhm_values, 1)
+        polynomial_FWHM = np.poly1d(coefficients_FWHM)
 
-    coefficients_FWHM = np.polyfit(size_from_area1, fwhm_fwhm_values, 1)
-    polynomial_FWHM = np.poly1d(coefficients_FWHM)
+        plt.figure()
+        plt.scatter(size_from_area1, fwhm_fwhm_values)
+        plt.plot(size_from_area1, polynomial_FWHM(size_from_area1), color='red')
+        plt.xlabel('Cell Size in Microns (sqrt of area)')
+        plt.ylabel('FWHM (radians)')
+        plt.title('FWHM of FWHM vs Cell Size ' + names[_])
+        plt.legend(['Data', 'linear fit'])
+        plt.annotate(f"y = {coefficients_FWHM[0]:.4f}x + {coefficients_FWHM[1]:.4f}", (0.1, 0.9), xycoords='axes fraction')
 
-    plt.figure()
-    plt.scatter(size_from_area1, fwhm_fwhm_values)
-    plt.plot(size_from_area1, polynomial_FWHM(size_from_area1), color='red')
-    plt.xlabel('Cell Size in Microns (sqrt of area)')
-    plt.ylabel('FWHM (radians)')
-    plt.title('FWHM of FWHM vs Cell Size ' + names[_])
-    plt.legend(['Data', 'linear fit'])
-    plt.annotate(f"y = {coefficients_FWHM[0]:.4f}x + {coefficients_FWHM[1]:.4f}", (0.1, 0.9), xycoords='axes fraction')
+        ## Write the data to a csv file
+        # Create a dictionary of the data
+        data = {'Cell': [prop.label for prop in filtered_props][1:],
+                'Area in microns': areas_all1,
+                'Size in microns': size_from_area1,
+                'Mean of FWHM': fwhm_ave_values,
+                'Std of FWHM': std_FWHM_values,
+                'FWHM of FWHM': fwhm_fwhm_values}
 
-    ## Write the data to a csv file
-    # Create a dictionary of the data
-    data = {'Cell': [prop.label for prop in filtered_props][1:],
-            'Area in microns': areas_all1,
-            'Size in microns': size_from_area1,
-            'Mean of FWHM': fwhm_ave_values,
-            'Std of FWHM': std_FWHM_values,
-            'FWHM of FWHM': fwhm_fwhm_values}
+        # Create a dataframe from the dictionary
+        df = pd.DataFrame(data)
 
-    # Create a dataframe from the dictionary
-    df = pd.DataFrame(data)
+        # Write the dataframe to a csv file
+        #df.to_csv('FWHM_cells_4.6_radians.csv', index=False)
+    if len(size_from_area1) >= 2 and len(fwhm_ave_values) >= 2:
+        correlation_fwhm = np.corrcoef(size_from_area1, fwhm_ave_values)[0, 1]
+        print(f"Pearson correlation coefficient: {correlation_fwhm:.4f}")
 
-    # Write the dataframe to a csv file
-    #df.to_csv('FWHM_cells_4.6_radians.csv', index=False)
+        coefficients = np.polyfit(size_from_area1, fwhm_ave_values, 1)
 
-    correlation_fwhm = np.corrcoef(size_from_area1, fwhm_ave_values)[0, 1]
-    print(f"Pearson correlation coefficient: {correlation_fwhm:.4f}")
+        polynomial = np.poly1d(coefficients)
 
-    coefficients = np.polyfit(size_from_area1, fwhm_ave_values, 1)
+        plt.figure()
+        plt.scatter(size_from_area1, fwhm_ave_values)
+        plt.plot(size_from_area1, polynomial(size_from_area1), color='red')
+        plt.title('Average FWHM vs Cell Size ' + names[_])
+        plt.xlabel('Cell Size in Microns (sqrt of area)')
+        plt.ylabel('Average FWHM (radians)')
+        plt.legend(['Data', 'linear fit'])
+        plt.annotate(f"y = {coefficients[0]:.4f}x + {coefficients[1]:.4f}", (0.1, 0.9), xycoords='axes fraction')
 
-    polynomial = np.poly1d(coefficients)
+        correlation_coefficient = pearsonr(size_from_area1, fwhm_ave_values)
+        print(f"Pearson correlation coefficient: {correlation_coefficient[0]:.4e}")
+        print(f"Pearson correlation p-value: {correlation_coefficient[1]:.4e}")
 
-    plt.figure()
-    plt.scatter(size_from_area1, fwhm_ave_values)
-    plt.plot(size_from_area1, polynomial(size_from_area1), color='red')
-    plt.title('Average FWHM vs Cell Size ' + names[_])
-    plt.xlabel('Cell Size in Microns (sqrt of area)')
-    plt.ylabel('Average FWHM (radians)')
-    plt.legend(['Data', 'linear fit'])
-    plt.annotate(f"y = {coefficients[0]:.4f}x + {coefficients[1]:.4f}", (0.1, 0.9), xycoords='axes fraction')
-
-    correlation_coefficient = pearsonr(size_from_area1, fwhm_ave_values)
-    print(f"Pearson correlation coefficient: {correlation_coefficient[0]:.4e}")
-    print(f"Pearson correlation p-value: {correlation_coefficient[1]:.4e}")
-
-    pearsons.append(correlation_coefficient[0])
+        pearsons.append(correlation_coefficient[0])
+    else:
+        pearsons.append(np.nan)
 
 
 # Plot the Pearson correlation coefficient for each sample
