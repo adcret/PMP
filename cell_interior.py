@@ -141,7 +141,7 @@ for _ in range(len(com_chi)):
     KAM_list = np.arange(0, 0.085, 0.001).tolist()
 
     for value in KAM_list:
-        KAM_threshold = 0.041
+        KAM_threshold = value
         KAM_filter = np.zeros_like(KAM, dtype=bool)
 
         # Apply the threshold to create the filter
@@ -154,7 +154,7 @@ for _ in range(len(com_chi)):
         if 0.69 < area_ratio < 0.71:
             break
         elif area_ratio < 0.69:
-            KAM_threshold = 0.041
+            KAM_threshold = 0.015
             break
 
     # Calculate the area ratio
@@ -207,6 +207,8 @@ for _ in range(len(com_chi)):
     #plt.axis('equal')
     #plt.title('FWHM values map')
 
+    FWHM_Chi[skel_Img] = np.nan  # Set the skeletonized pixels to NaN
+    FWHM_Phi[skel_Img] = np.nan  # Set the skeletonized pixels to NaN
     FWHM_Img[skel_Img] = np.nan  # Set the skeletonized pixels to NaN
     #plt.figure()
     #plt.imshow(FWHM_Img, extent=[0, pixel_x * row_size, 0, pixel_y * col_size], cmap='viridis', vmin=0, vmax=2.5)
@@ -216,6 +218,8 @@ for _ in range(len(com_chi)):
     #plt.axis('equal')
     #plt.title('FWHM values map with skeleton overlay')
 
+    FWHM_Chi[~g] = np.nan  # Set the pixels in the mask to NaN
+    FWHM_Phi[~g] = np.nan  # Set the pixels in the mask to NaN
     FWHM_Img[~g] = np.nan  # Set the pixels in the mask to NaN
 
     # Plot FWHM_Img
@@ -228,8 +232,18 @@ for _ in range(len(com_chi)):
     #plt.title('FWHM values map with grain1 mask')
 
     # Plot histogram of FWHM values
+    FWHM_Chi_hist = np.concatenate(FWHM_Chi)
+    FWHM_Phi_hist = np.concatenate(FWHM_Phi)
     FWHM_hist = np.concatenate(FWHM_Img)
     FWHM_hist = FWHM_hist[~np.isnan(FWHM_hist)]
+    FWHM_Chi_hist = FWHM_Chi_hist[~np.isnan(FWHM_Chi_hist)]
+    FWHM_Phi_hist = FWHM_Phi_hist[~np.isnan(FWHM_Phi_hist)]
+
+    mean_FWHM_chi = np.mean(FWHM_Chi_hist)/180*math.pi
+    print(f"Mean FWHM chi: {mean_FWHM_chi:.4f}")
+
+    mean_FWHM_phi = np.mean(FWHM_Phi_hist)/180*math.pi
+    print(f"Mean FWHM phi: {mean_FWHM_phi:.4f}")
 
     # Plot histogram of FWHM values
     #plt.figure()

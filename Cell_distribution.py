@@ -23,7 +23,7 @@ def extract_number(filename):
 com_phi = sorted(com_phi, key=extract_number)
 com_chi = sorted(com_chi, key=extract_number)
 
-names = [file[:3] for file in com_phi]
+names = [extract_number(file) for file in com_phi]
 print(names)    
 
 pixel_x = 0.6575
@@ -75,8 +75,6 @@ for _ in range(len(com_chi)):
     B1 = A.T
     B2 = np.flipud(B1)
 
-    # Identify NaN pixels for Phi data
-    TF = np.isnan(B2)
 
     # Normalize to average orientation for Phi
     ave_phi = np.nanmean(A)  # Compute the average, ignoring NaNs
@@ -154,7 +152,7 @@ for _ in range(len(com_chi)):
     sizes = []
     sizes1 = []
     for value in KAM_list:
-        KAM_threshold = 0.041
+        KAM_threshold = value
         KAM_filter = np.zeros_like(KAM, dtype=bool)
 
         # Apply the threshold to create the filter
@@ -167,7 +165,7 @@ for _ in range(len(com_chi)):
         if 0.69 < area_ratio < 0.72 or area_ratio < 0.65:
             if area_ratio < 0.65:
                 # Update KAM_threshold and recompute KAM_filter
-                KAM_threshold = 0.041
+                KAM_threshold = 0.015
                 KAM_filter = np.zeros_like(KAM, dtype=bool)
                 KAM_filter[grain_mask & (KAM > KAM_threshold)] = True
 
@@ -306,7 +304,7 @@ for _ in range(len(com_chi)):
             plt.xlabel('Minor/Major Axis Ratio')
             plt.ylabel('Orientation (rad)')
             plt.title('Minor to Major Axis Ratios vs Orientations')
-            plt.show()
+            
 
             mean_ratio = np.mean(ratios)
             median_ratio = np.median(ratios)
@@ -340,7 +338,7 @@ area_sizes = list(area_sizes)
 area_sizes1 = list(area_sizes1)
 
 # Get the strain steps for plot titles
-strain = [0.005, 0.008, 0.013, 0.024, 0.035, 0.046]
+strain = [0, 0.005, 0.008, 0.013, 0.024, 0.035, 0.046, 0.046, 0.046, 0.046]
 
 # Plotting grain sizes 
 plt.figure()

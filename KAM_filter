@@ -30,7 +30,7 @@ file_path = 'C:\\Users\\adacre\\OneDrive - Danmarks Tekniske Universitet\\Docume
 pixel_y = 0.203; pixel_x = 0.6575; # effective pixel sizes in mu
 
 # Read in CHI COM data
-chi_file = fabio.open(file_path + '838um_2x_2_05_com_chi_fit15.edf')
+chi_file = fabio.open(file_path + '838um_2x_3_00_com_chi_t7_fit15.edf')
 A = chi_file.data
 row_size, col_size = A.shape
 
@@ -47,7 +47,7 @@ Chi_Img = B - ave_chi
 max_chi = np.nanmax(Chi_Img)  # Find max, ignoring NaNs
 
 # Read in PHI COM data
-phi_file = fabio.open(file_path + '838um_2x_2_05_com_phi_fit15.edf')
+phi_file = fabio.open(file_path + '838um_2x_3_00_com_phi_t7_fit15.edf')
 A = phi_file.data
 
 # Rotate and mirror for Phi data
@@ -299,7 +299,7 @@ plt.title('KAM skeleton overlay on Mosa map with highlighted skeleton 838')
 ## plt.show()
 
 # Read in FWHM data for Ch
-chi_fwhm_file = fabio.open(file_path + '838um_2x_2_05_fwhm_chi_fit15.edf')
+chi_fwhm_file = fabio.open(file_path + '838um_2x_3_00_fwhm_chi_t7_fit15.edf')
 A = chi_fwhm_file.data
 B1 = A.T
 B = np.flipud(B1)
@@ -307,7 +307,7 @@ B[~grain_mask] = 2  # Apply grain mask and set outside values to 2
 FWHM_Chi = np.minimum(np.abs(B), 2)
 
 # Read in FWHM data for Phi
-phi_fwhm_file = fabio.open(file_path + '838um_2x_2_05_fwhm_phi_fit15.edf')
+phi_fwhm_file = fabio.open(file_path + '838um_2x_3_00_fwhm_phi_t7_fit15.edf')
 A = phi_fwhm_file.data
 B1 = A.T
 B = np.flipud(B1)
@@ -463,12 +463,12 @@ for region in props:
         filtered_props.append(region)
 
 # Iterate over each region in props
-for region in filtered:
+#for region in filtered:
     # Get the coordinates of the region
-    region_coords = region.coords
+   # region_coords = region.coords
 
     # Check if any of the coordinates overlap with the mask
-    overlap = np.any(dilated_mask[region_coords[:, 0], region_coords[:, 1]])
+   # overlap = np.any(dilated_mask[region_coords[:, 0], region_coords[:, 1]])
    # if not overlap:
        # filtered_props.append(region)
 
@@ -623,6 +623,7 @@ for i, prop in enumerate(filtered_props):
 # Dilate all masks at once
 dilated_masks = [binary_dilation(mask, disk(5)) for mask in masks]
 
+#Find the neighbours for each cell in the filtered_props list of objects
 # Iterate over each cell and its dilated mask
 for i, (prop, dilated_mask) in enumerate(zip(filtered_props, dilated_masks)):
     dilated_bbox = compute_bbox(np.argwhere(dilated_mask))
@@ -706,36 +707,6 @@ plt.show()
 chi_differences = []
 phi_differences = []
 
-# Loop through each cell in the filtered properties list
-# for cell_props in filtered_props:
-#     cell_id = cell_props.label
-#     # Calculate the average Chi and Phi values for the current cell
-#     cell_ave_Chi = np.mean(Mosa_Img[cell_props.coords[:, 0], cell_props.coords[:, 1], 0])
-#     cell_ave_Phi = np.mean(Mosa_Img[cell_props.coords[:, 0], cell_props.coords[:, 1], 1])
-
-#     # Make sure to only look at neighbors that are in the dictionary
-#     if cell_id in neighbors_dict:
-#         # Filter out the neighbors to ensure we only count each pair once
-#         for neighbor_id in neighbors_dict[cell_id]:
-#             num_neighbors += 1
-#             # Proceed only if the neighbor's label is greater than the current cell's label
-#             if neighbor_id > cell_id:
-#                 # Find the properties for the neighbor
-#                 neighbor_props = next((prop for prop in filtered_props if prop.label == neighbor_id), None)
-#                 if neighbor_props:
-#                     # Calculate the average Chi and Phi values for the neighbor cell
-#                     neighbor_ave_Chi = np.mean(Mosa_Img[neighbor_props.coords[:, 0], neighbor_props.coords[:, 1], 0])
-#                     neighbor_ave_Phi = np.mean(Mosa_Img[neighbor_props.coords[:, 0], neighbor_props.coords[:, 1], 1])
-
-#                     # Calculate the differences and scale them
-#                     chi_diff = (cell_ave_Chi - neighbor_ave_Chi) * (MaxChi - MinChi) + MinChi
-#                     phi_diff = (cell_ave_Phi - neighbor_ave_Phi) * (MaxPhi - MinPhi) + MinPhi
-
-#                     # Add the differences to the lists
-#                     chi_differences.append(chi_diff)
-#                     phi_differences.append(phi_diff)
-
-
 # Precompute the average Chi and Phi for each cell
 # Now you can calculate the averages using Chi_Img and Phi_Img that have not been scaled for RGB values, true data
 ave_Chi = {prop.label: np.mean(Chi_Img[prop.coords[:, 0], prop.coords[:, 1]]) for prop in filtered_props}
@@ -769,6 +740,26 @@ for cell_props in filtered_props:
         phi_differences.append(phi_diff)
 
 
+# Calculate the average number of neighbours per cell
+total_neighbours = 0
+num_cells = len(filtered_props)
+
+# Loop through each cell
+for cell_props in filtered_props:
+    cell_id = cell_props.label
+
+    # Get the list of neighbours for the cell
+    neighbor_ids = neighbors_dict.get(cell_id, [])
+
+    # Count the number of neighbours for this cell
+    total_neighbours += len(neighbor_ids)
+
+# Calculate the average number of neighbuors per cell
+average_neighbors = total_neighbours / num_cells if num_cells > 0 else 0
+
+print(f"Average number of neighbours per cell: {average_neighbors}")
+
+
 
 print(f'Number of neighbors: {num_neighbors}')
 # Plotting the scatter plot
@@ -792,12 +783,11 @@ X, Y = np.meshgrid(x_edges[:-1], y_edges[:-1])
 
 # Create the contour plot
 plt.figure()
-plt.contourf(X, Y, H.T, levels=100, cmap='viridis')  # Transpose H to align with X and Y axes
-plt.colorbar(label='Count')
+plt.scatter(chi_differences, phi_differences, alpha=0.5, s=10)
+plt.contour(X, Y, H.T, levels=15)  # Transpose H to align with X and Y axes
 plt.xlabel('Difference in Chi Orientation')
 plt.ylabel('Difference in Phi Orientation')
 plt.title('Contour Plot with Orientation Differences')
-plt.show()
 
 # Define a 2-D Gaussian function
 def gaussian(xy, amplitude, xo, yo, sigma_x, sigma_y, theta, offset):
