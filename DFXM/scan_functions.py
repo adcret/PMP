@@ -358,7 +358,7 @@ def neighbour_misorientation(regions, neighbours_dict, ave_Chi, ave_Phi):
     return misorientations
 
 
-def neighbour_GND(regions, neighbours_dict, ave_Chi, ave_Phi, k=1.5):
+def neighbour_GND(misorientations, k=1.5):
     # Constants for Aluminium
     b_Al = 0.286e-9  # Burgers vector in meters
     
@@ -368,36 +368,11 @@ def neighbour_GND(regions, neighbours_dict, ave_Chi, ave_Phi, k=1.5):
 
     GND_densities = []
 
-    for cell_props in regions:
-        cell_id = cell_props.label
-        cell_Chi = ave_Chi[cell_id]
-        cell_Phi = ave_Phi[cell_id]
-        cell_centroid = cell_props.centroid  # Accessing the centroid of the cell
+    for i in misorientations:
+        misorientation_rad = np.deg2rad(i)
 
-        neighbor_ids = [n_id for n_id in neighbours_dict.get(cell_id, []) if n_id > cell_id]
-
-        for neighbor_id in  range(len(ave_Chi)):
-            neighbor_Chi = ave_Chi[neighbor_id]
-            neighbor_Phi = ave_Phi[neighbor_id]
-            neighbor_centroid = regions[neighbor_id].centroid  # Adjust indexing if necessary
-
-
-            # Convert delta_pixels to meters
-            delta_y_pixels = abs(cell_centroid[0] - neighbor_centroid[0]) * pixel_y
-            delta_x_pixels = abs(cell_centroid[1] - neighbor_centroid[1]) * pixel_x
-            delta_x_meters = np.sqrt(delta_y_pixels**2 + delta_x_pixels**2) * 1e-6  # Convert micrometers to meters
-
-            # Calculate the angular differences for Chi and Phi
-            chi_diff = angular_difference(cell_Chi, neighbor_Chi)
-            phi_diff = angular_difference(cell_Phi, neighbor_Phi)
-
-            # Calculate misorientation angle
-            misorientation = np.sqrt(chi_diff**2 + phi_diff**2)
-            # Convert misorientation from degrees to radians for GND calculation
-            misorientation_rad = np.deg2rad(misorientation)
-
-            # Calculate GND density
-            rho_GND = (k * misorientation_rad) / (b_Al * delta_x_meters)
-            GND_densities.append(rho_GND)
+        # Calculate GND density
+        rho_GND = (k * misorientation_rad) / (b_Al * 0.0000000003)
+        GND_densities.append(rho_GND)
 
     return GND_densities

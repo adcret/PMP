@@ -138,12 +138,17 @@ def main():
     plt.show()
 
     chi_differences, phi_differences, num_neighbours = neighbour_rotations(filtered_regions, neighbours_dict, Img_chi, Img_phi)
+    misorientations = neighbour_misorientation(filtered_regions, neighbours_dict, chi_differences, phi_differences)
 
+    GND_densities = neighbour_GND(misorientations)
 
-    GND_densities = neighbour_GND(filtered_regions, neighbours_dict, chi_differences, phi_differences)
+    plt.figure()
+    plt.hist(misorientations, bins=20)
+    plt.show()
 
     plt.figure()
     plt.hist(GND_densities, bins=20)
+    plt.show()
 
                                   
 if __name__ == '__main__':
