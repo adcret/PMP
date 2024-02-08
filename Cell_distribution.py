@@ -147,7 +147,7 @@ for _ in range(len(com_chi)):
 
 
     # Create KAM filter and calculate area ratio
-    KAM_list = np.arange(0, 0.085, 0.001).tolist()
+    KAM_list = np.arange(0.01, 0.085, 0.001).tolist()
     
     sizes = []
     sizes1 = []
@@ -165,7 +165,7 @@ for _ in range(len(com_chi)):
         if 0.69 < area_ratio < 0.72 or area_ratio < 0.65:
             if area_ratio < 0.65:
                 # Update KAM_threshold and recompute KAM_filter
-                KAM_threshold = 0.015
+                KAM_threshold = 0.01
                 KAM_filter = np.zeros_like(KAM, dtype=bool)
                 KAM_filter[grain_mask & (KAM > KAM_threshold)] = True
 
@@ -189,6 +189,7 @@ for _ in range(len(com_chi)):
 
             # Invert and dilate the skeleton image
             BW_img = ~binary_dilation(skel_Img, disk(1))
+            BW_img = skel_Img
             WB_img = ~BW_img
 
 
@@ -205,7 +206,7 @@ for _ in range(len(com_chi)):
             # Get region properties
             props = regionprops(labeled_array)
 
-            min_cell_size = 5  # minimum size in pixel for a cell to be considered
+            min_cell_size = 3  # minimum size in pixel for a cell to be considered
 
             mask = np.all(mosa == [1, 1, 1], axis=-1)
 
@@ -388,12 +389,13 @@ def fit_and_plot_lognorm(data, ax, label):
         mean_size = np.mean(data)
         D, p_value = kstest(data, lambda x: lognorm.cdf(x, *params))
         ax.annotate(f'p-value={p_value:.2e}', xy=(0.5, 0.8), xycoords='axes fraction', ha='center', va='center', fontsize=14)
-        ax.annotate(f'Mean: {mean_size:.2f} mu', xy=(0.5, 0.7), xycoords='axes fraction', ha='center', va='center', fontsize=14)
+        ax.annotate(f'Mean: {mu:.2f} mu', xy=(0.5, 0.7), xycoords='axes fraction', ha='center', va='center', fontsize=14)
         ax.annotate(f'Mu/Sigma Ratio: {ratio_mu_sigma:.2f}', xy=(0.5, 0.6), xycoords='axes fraction', ha='center', va='center', fontsize=14)
         ax.set_xlabel('Cell Size', fontsize=20)
         ax.set_ylabel('PDF', fontsize=20)
         ax.set_xlim(0, 18)
         #ax.set_title(label, fontsize=20)
+        print(f'Fitted lognormal for {label} epsilon with mu={mu:.2f}, sigma={shape:.2f}, D={D:.2e}, p-value={p_value:.2e}, ratio={ratio_mu_sigma:.2f}')
     except Exception as e:
         print(f"Error fitting {label}: {e}")
         ax.text(0.5, 0.5, 'Error in fitting', horizontalalignment='center', verticalalignment='center', transform=ax.transAxes)
@@ -406,7 +408,7 @@ for i, dataset in enumerate(area_sizes1):
     fig, ax = plt.subplots(figsize=(9, 6))  # Single plot for log-normal distribution
 
     # Fit and plot log-normal distribution for the current dataset
-    fit_and_plot_lognorm(dataset, ax, 'Lognormal Distribution')
+    fit_and_plot_lognorm(dataset, ax, strain[i])
 
     # Set the title for the figure as the name of the sample
     strain_step = strain[i]
@@ -436,10 +438,13 @@ def fit_and_plot_normal_log(data, ax, label):
         ax.hist(log_data, bins=25, density=True, alpha=0.9)
         ax.plot(x, pdf, 'r-')
         mean_size = np.mean(log_data)
+        ratio_mu_sigma = mu / std
         D, p_value = kstest(log_data, lambda x: norm.cdf(x, mu, std))
         ax.annotate(f'KS test: D={D:.2f}, p={p_value:.2f}', xy=(0.5, 0.8), xycoords='axes fraction', ha='center', va='center')
-        ax.annotate(f'Mean: {mean_size:.2f}', xy=(0.5, 0.7), xycoords='axes fraction', ha='center', va='center')
+        ax.annotate(f'Mean: {mu:.2f}', xy=(0.5, 0.7), xycoords='axes fraction', ha='center', va='center')
+        ax.annotate(f'Std: {std:.2f}', xy=(0.5, 0.6), xycoords='axes fraction', ha='center', va='center')
         ax.set_title(label)
+        print(f'Fitted normal for natural log {label} epsilon with mu={mu:.2f} D={D:.2e}, p-value={p_value:.2e}, ratio={ratio_mu_sigma:.2f}')
     except Exception as e:
         print(f"Error fitting {label}: {e}")
         ax.text(0.5, 0.5, 'Error in fitting', horizontalalignment='center', verticalalignment='center', transform=ax.transAxes)
@@ -452,7 +457,7 @@ for i, dataset in enumerate(area_sizes1):
     fig, ax = plt.subplots(figsize=(8, 6))  # Single plot for normal distribution of log data
 
     # Fit and plot normal distribution to the log of the current dataset
-    fit_and_plot_normal_log(dataset, ax, 'Normal Distribution of Log Data')
+    fit_and_plot_normal_log(dataset, ax, strain[i])
 
     # Set the title for the figure as the name of the sample
     #fig.suptitle('$epsilon$' + strain[i], fontsize=18)

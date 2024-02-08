@@ -9,12 +9,14 @@ from skimage.feature import canny
 from skimage.measure import regionprops
 import matplotlib.pyplot as plt
 import matplotlib.colors as colors
-from scipy.stats import norm, lognorm, rayleigh, chi, maxwell
+import matplotlib.patches as patches
+from scipy.stats import norm, lognorm, rayleigh, chi, maxwell, kstest
 from scipy.optimize import curve_fit
 from rtree import index
 import time 
 import csv
 import os
+import imageio
 
 def load_data(path, type):
 
@@ -132,19 +134,43 @@ def calculate_KAM(col_size, row_size, grain_mask, Chi_Img, Phi_Img, kernelSize):
 
     return KAM
 
-def KAM_refine(KAM, grain_mask, threshold):
 
-    # Create a mask of the KAM map
-    # return the KAM mask and the skeleton of the KAM mask
-    # the threshold is used to filter the KAM map and is in degrees
+def KAM_refine(KAM, grain_mask):
+    # Create KAM filter and calculate area ratio
+    KAM_list = np.arange(0.01, 0.085, 0.001).tolist()
+    KAM_threshold_updated = False
 
-    KAM_filter = np.zeros_like(KAM, dtype=bool)
-    KAM_filter[grain_mask & (KAM > threshold)] = True
-    area_ratio = np.sum(KAM_filter) / np.sum(grain_mask)
-    KAM = binary_erosion(KAM_filter, disk(1, strict_radius= True))
-    KAM_mask = binary_dilation(KAM, disk(1, strict_radius= True))
+    for value in KAM_list:
+        KAM_threshold = value
+        KAM_filter = np.zeros_like(KAM, dtype=bool)
+
+        # Apply the threshold to create the filter
+        KAM_filter[grain_mask & (KAM > KAM_threshold)] = True
+
+        # Calculate the area ratio
+        area_ratio = np.sum(KAM_filter) / np.sum(grain_mask)
+        print(f'KAM mask: percentage in walls {area_ratio * 100:.2f}% with KAM threshold: {KAM_threshold}')
+        
+        # Adjust KAM_threshold based on the area ratio
+        if 0.69 < area_ratio < 0.72 or area_ratio < 0.65:
+            if area_ratio < 0.65:
+                # Update KAM_threshold to 0.015 if the area ratio is less than 0.65
+                KAM_threshold = 0.01
+                KAM_threshold_updated = True
+            break
+
+    # Recompute KAM_filter with the final KAM_threshold, if it was updated
+    if KAM_threshold_updated:
+        KAM_filter = np.zeros_like(KAM, dtype=bool)
+        KAM_filter[grain_mask & (KAM > KAM_threshold)] = True
+    
+    # Apply morphological operations to refine the KAM mask
+    se = disk(1)
+    KAM_mask = binary_erosion(KAM_filter, se)
+    KAM_mask = binary_dilation(KAM_mask, se)
+    
+    # Skeletonize the refined KAM mask
     skel_KAM = skeletonize(KAM_mask)
-    print(f'Area ratio of KAM mask:{area_ratio*100:.2f}% with threshold {threshold:.2f}')
 
     return KAM_mask, skel_KAM
 
@@ -200,7 +226,7 @@ def find_regions(skel):
     # Find the regions in the skeleton
     # return the regions and the number of regions
 
-    BW_img = ~binary_dilation(skel, disk(1))
+    #BW_img = ~binary_dilation(skel, disk(1))
     BW_img = ~skel
     labeled_array, num_features = label(BW_img)
     nr_cells = num_features
@@ -216,16 +242,13 @@ def filter_regions(regions, mosa, min_cell_size = 10):
     # the min_cell_size is the minimum size of a cell in pixels
 
     mask = np.all(mosa == [1, 1, 1], axis = -1)
-    erroded_mask = binary_erosion(mask, disk(3))
-    dilated_mask = binary_dilation(erroded_mask, disk(3))
-    dilated_mask = binary_dilation(dilated_mask, disk(3))
-    dilated_mask = binary_dilation(dilated_mask, disk(20))
+    mask = binary_erosion(mask, disk(3))
 
     filtered_regions = []
     for region in regions:
         region_coords = region.coords
-        overlap = np.any(erroded_mask[region_coords[:, 0], region_coords[:, 1]])
-        if not overlap and region.area > min_cell_size:
+        overlap = np.any(mask[region_coords[:, 0], region_coords[:, 1]]) # change to erroded_mask if needed
+        if not overlap and region.area >= min_cell_size:
             filtered_regions.append(region)
     
     print(f'Number of filtered regions: {len(filtered_regions)}')
@@ -245,7 +268,7 @@ def dilate_mask(mask):
 
 def parallel_dilate_masks(masks):
     with ProcessPoolExecutor() as executor:
-        result = list(tqdm(executor.map(dilate_mask, masks), total=len(masks), desc="Dilating masks in parallel"))
+        result = list(tqdm(executor.map(dilate_mask, masks), total=len(masks), desc="Dilating masks"))
     return result
 
 def find_neighbours(regions, labeled_array):
@@ -376,3 +399,162 @@ def neighbour_GND(misorientations, k=1.5):
         GND_densities.append(rho_GND)
 
     return GND_densities
+
+def area_sizes(regions, pixel_y, pixel_x):
+    # Calculate the area and size of each cell in micrometers
+    # return the areas and sizes
+
+    areas = [prop.area * pixel_y * pixel_x for prop in regions]
+    sizes = [np.sqrt(area) for area in areas]
+
+    return areas, sizes	
+
+def fit_and_plot_lognorm(data, ax, label):
+    # Remove NaNs and infinite values from data
+    data = np.array(data)
+    data = data[np.isfinite(data)]
+    data = data[data < 25]  # remove outliers
+
+    # Handle empty data or data with insufficient values
+    if len(data) < 10:
+        ax.text(0.5, 0.5, 'Insufficient data', horizontalalignment='center', verticalalignment='center', transform=ax.transAxes)
+        ax.set_title(label)
+        return
+
+    try:
+        # Fit the log-normal distribution to the data
+        params = lognorm.fit(data)
+        shape, loc, scale = params
+        mu = np.log(scale)
+        ratio_mu_sigma = mu / shape
+        x = np.linspace(min(data), max(data), 100)
+        pdf = lognorm.pdf(x, *params)
+        ax.hist(data, bins=50, range=(0, 18), density=True, alpha=0.9)
+        ax.plot(x, pdf, 'r-', lw = 4)
+        mean_size = np.mean(data)
+        D, p_value = kstest(data, lambda x: lognorm.cdf(x, *params))
+        ax.annotate(f'p-value={p_value:.2e}', xy=(0.5, 0.8), xycoords='axes fraction', ha='center', va='center', fontsize=14)
+        ax.annotate(f'Mean: {mean_size:.2f} mu', xy=(0.5, 0.7), xycoords='axes fraction', ha='center', va='center', fontsize=14)
+        ax.annotate(f'Mu: {mu:.2f}, Sigma: {shape:.2f}', xy=(0.5, 0.6), xycoords='axes fraction', ha='center', va='center', fontsize=14)
+        ax.annotate(f'Mu/Sigma Ratio: {ratio_mu_sigma:.2f}', xy=(0.5, 0.5), xycoords='axes fraction', ha='center', va='center', fontsize=14)
+        ax.set_xlabel('Cell Size', fontsize=20)
+        ax.set_ylabel('PDF', fontsize=20)
+        ax.set_xlim(0, 18)
+        #ax.set_title(label, fontsize=20)
+        print(f'Fitted lognormal for {label} epsilon with mu={mu:.2f}, sigma={shape:.2f}, D={D:.2e}, p-value={p_value:.2e}, ratio={ratio_mu_sigma:.2f}')
+    except Exception as e:
+        print(f"Error fitting {label}: {e}")
+        ax.text(0.5, 0.5, 'Error in fitting', horizontalalignment='center', verticalalignment='center', transform=ax.transAxes)
+
+def anisotropy(regions):
+    
+    # Calculate the anisotropy of the cells
+    # return the anisotropy of the cells
+    
+    major_axes = []
+    minor_axes = []
+    for prop in regions:
+        major_axes.append(prop.major_axis_length)
+        minor_axes.append(prop.minor_axis_length)
+    
+    return major_axes, minor_axes
+
+def volume_fraction(areas, grain_mask, skeleton, pixel_x, pixel_y):
+
+    # Calculate the volume fraction of the cells
+    # return the volume fraction of the cells
+
+    total_area = np.sum(areas)
+    #BW_img = ~binary_dilation(skeleton, disk(1))
+    BW_img = ~skeleton
+    WB_img = ~BW_img
+    mask_pixels = np.sum(WB_img) * pixel_y * pixel_x 
+    grain_area = np.sum(grain_mask) * pixel_y * pixel_x
+    grain_area = grain_area - mask_pixels
+
+    volume_fraction = total_area / grain_area
+    print(f'Volume fraction: {volume_fraction * 100:.2f}%')
+    return volume_fraction
+
+
+"""
+## ADD TO Script if the cells want to be visualised interactively ## 
+def plot_cells_and_neighbors(cell_id, ax):
+    ax.clear()  # Clear the current axes
+    
+    # Obtain properties of all regions
+    regions = regionprops(labeled_array)
+    
+    # Create masks for the cell and its neighbors
+    cell_mask = (labeled_array == cell_id)
+    neighbors_mask = np.zeros_like(cell_mask, dtype=bool)
+    
+    neighbors = neighbours_dict.get(cell_id, [])
+    for neighbor_id in neighbors:
+        neighbors_mask |= (labeled_array == neighbor_id)
+    
+    # Find the centroid of the cell
+    cell_props = [prop for prop in regions if prop.label == cell_id]
+    if cell_props:
+        center_y, center_x = cell_props[0].centroid
+    else:
+        # Default center if cell is not found
+        center_y, center_x = cell_mask.shape[0] // 2, cell_mask.shape[1] // 2
+    
+    # Define the region to display
+    display_region = (max(int(center_y) - 300, 0), min(int(center_y) + 300, cell_mask.shape[0]),
+                    max(int(center_x) - 300, 0), min(int(center_x) + 300, cell_mask.shape[1]))
+    
+    # Adjust the display region to ensure it is within bounds
+    dy, dx = display_region[0], display_region[2]
+    
+    # Create RGBA images for the masks
+    cell_mask_rgba = np.zeros((*cell_mask.shape, 4))
+    neighbors_mask_rgba = np.zeros((*neighbors_mask.shape, 4))
+    
+    # Set RGBA colors
+    cell_mask_rgba[cell_mask, :3] = [1, 0, 0]  # Red
+    cell_mask_rgba[cell_mask, 3] = 0.7  # Alpha
+    neighbors_mask_rgba[neighbors_mask, :3] = [0, 0, 1]  # Blue
+    neighbors_mask_rgba[neighbors_mask, 3] = 0.7  # Alpha
+    
+    # Plot the original image within the display region
+    ax.imshow(Cell_Img1[display_region[0]:display_region[1], display_region[2]:display_region[3]], cmap='jet', alpha=0.7)
+    # Overlay the cell and neighbors masks within the same region
+    ax.imshow(cell_mask_rgba[display_region[0]:display_region[1], display_region[2]:display_region[3]])
+    ax.imshow(neighbors_mask_rgba[display_region[0]:display_region[1], display_region[2]:display_region[3]])
+    
+    # Draw lines between the cell and its neighbors using centroids
+    for neighbor_id in neighbors:
+        neighbor_props = [prop for prop in regions if prop.label == neighbor_id]
+        if neighbor_props:
+            center_y_neighbor, center_x_neighbor = neighbor_props[0].centroid
+            
+            # Adjust centroid coordinates to the display region
+            adjusted_center_x = center_x - dx
+            adjusted_center_y = center_y - dy
+            adjusted_center_x_neighbor = center_x_neighbor - dx
+            adjusted_center_y_neighbor = center_y_neighbor - dy
+            
+            # Draw a line from the current cell to the neighbor
+            ax.plot([adjusted_center_x, adjusted_center_x_neighbor], [adjusted_center_y, adjusted_center_y_neighbor], 'yellow')
+    
+    ax.axis('off')
+
+# Set up the figure and slider as before
+fig, ax = plt.subplots()
+plt.subplots_adjust(left=0.1, bottom=0.25)
+
+ax_slider = plt.axes([0.1, 0.1, 0.8, 0.03])
+slider = Slider(ax_slider, 'Cell ID', 1, max(neighbours_dict.keys()), valinit=1, valstep=1)
+
+def update(val):
+    plot_cells_and_neighbors(int(val), ax)
+    fig.canvas.draw_idle()
+
+slider.on_changed(update)
+
+plot_cells_and_neighbors(1, ax)
+
+plt.show()
+"""

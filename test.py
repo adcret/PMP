@@ -15,141 +15,128 @@ def main():
     fwhm_chi = sorted(fwhm_chi, key=extract_number)
 
     print('com_phi', com_phi)
-
-    Img_chi, maximum_chi, average_chi, TF_chi, row_size_chi, col_size_chi = process_data(path, com_chi[6])
-    Img_phi, maximum_phi, average_phi, TF_phi, row_size_phi, col_size_phi = process_data(path, com_phi[6])
-
-
-    print(maximum_chi, average_chi, row_size_chi, col_size_chi)
-
-    grain = find_grain(TF_chi)
-    masked_chi_values, sigma_chi, grain_mask = values_histogram(Img_chi, maximum_chi, grain)
-    masked_phi_values, sigma_phi, _ = values_histogram(Img_phi, maximum_phi, grain)
-
-    Img_chi = filter_grain(grain_mask, Img_chi, maximum_chi)
-    Img_phi = filter_grain(grain_mask, Img_phi, maximum_phi)
-
-    scaled_Img_chi = scale_image(Img_chi)
-    scaled_Img_phi = scale_image(Img_phi)
-
-    mosa, Mosa_Img = RGB_image(scaled_Img_chi, scaled_Img_phi)
+    i = 0
+    for phi_file, chi_file in zip(com_phi, com_chi):
+        i += 1
+        Img_chi, maximum_chi, average_chi, TF_chi, row_size_chi, col_size_chi = process_data(path, chi_file)
+        Img_phi, maximum_phi, average_phi, TF_phi, row_size_phi, col_size_phi = process_data(path, phi_file)
 
 
-    KAM = calculate_KAM(col_size_chi, row_size_chi, grain_mask, Img_chi, Img_phi, 2)
+        print(maximum_chi, average_chi, row_size_chi, col_size_chi)
+
+        grain = find_grain(TF_chi)
+        masked_chi_values, sigma_chi, grain_mask = values_histogram(Img_chi, maximum_chi, grain)
+        masked_phi_values, sigma_phi, _ = values_histogram(Img_phi, maximum_phi, grain)
+
+        Img_chi = filter_grain(grain_mask, Img_chi, maximum_chi)
+        Img_phi = filter_grain(grain_mask, Img_phi, maximum_phi)
+
+        scaled_Img_chi = scale_image(Img_chi)
+        scaled_Img_phi = scale_image(Img_phi)
+
+        mosa, Mosa_Img = RGB_image(scaled_Img_chi, scaled_Img_phi)
 
 
-    KAM_mask, skel_KAM = KAM_refine(KAM, grain_mask, 0.041)
+        KAM = calculate_KAM(col_size_chi, row_size_chi, grain_mask, Img_chi, Img_phi, 2)
 
-    regions, labeled_array = find_regions(skel_KAM)
 
-    filtered_regions = filter_regions(regions, mosa)
+        KAM_mask, skel_KAM = KAM_refine(KAM, grain_mask)
 
-    neighbours_dict = find_neighbours(filtered_regions, labeled_array)
-    
-    Cell_Img1 = np.ones_like(mosa)
-    for ii in range(1, len(filtered_regions)):  # Skip exterior nr_cells + 1
-        cellPixels = filtered_regions[ii].coords
-        cell_ave_Chi = np.mean(mosa[cellPixels[:, 0], cellPixels[:, 1], 0])
-        cell_ave_Phi = np.mean(mosa[cellPixels[:, 0], cellPixels[:, 1], 1])
-        for row, col in cellPixels:
-            Cell_Img1[row, col, 0] = cell_ave_Chi
-            Cell_Img1[row, col, 1] = cell_ave_Phi
-            Cell_Img1[row, col, 2] = 0  # Set blue channel to 0
+        regions, labeled_array = find_regions(skel_KAM)
 
-    Cell_Img1[skel_KAM] = [0, 0, 0]
+        filtered_regions = filter_regions(regions, mosa)
+        filtered_regions = [prop for prop in filtered_regions if prop.area * pixel_x * pixel_y <= 400]
 
-    def plot_cells_and_neighbors(cell_id, ax):
-        ax.clear()  # Clear the current axes
+        neighbours_dict = find_neighbours(filtered_regions, labeled_array)
         
-        # Obtain properties of all regions
-        regions = regionprops(labeled_array)
-        
-        # Create masks for the cell and its neighbors
-        cell_mask = (labeled_array == cell_id)
-        neighbors_mask = np.zeros_like(cell_mask, dtype=bool)
-        
-        neighbors = neighbours_dict.get(cell_id, [])
-        for neighbor_id in neighbors:
-            neighbors_mask |= (labeled_array == neighbor_id)
-        
-        # Find the centroid of the cell
-        cell_props = [prop for prop in regions if prop.label == cell_id]
-        if cell_props:
-            center_y, center_x = cell_props[0].centroid
-        else:
-            # Default center if cell is not found
-            center_y, center_x = cell_mask.shape[0] // 2, cell_mask.shape[1] // 2
-        
-        # Define the region to display
-        display_region = (max(int(center_y) - 100, 0), min(int(center_y) + 100, cell_mask.shape[0]),
-                        max(int(center_x) - 100, 0), min(int(center_x) + 100, cell_mask.shape[1]))
-        
-        # Adjust the display region to ensure it is within bounds
-        dy, dx = display_region[0], display_region[2]
-        
-        # Create RGBA images for the masks
-        cell_mask_rgba = np.zeros((*cell_mask.shape, 4))
-        neighbors_mask_rgba = np.zeros((*neighbors_mask.shape, 4))
-        
-        # Set RGBA colors
-        cell_mask_rgba[cell_mask, :3] = [1, 0, 0]  # Red
-        cell_mask_rgba[cell_mask, 3] = 0.7  # Alpha
-        neighbors_mask_rgba[neighbors_mask, :3] = [0, 0, 1]  # Blue
-        neighbors_mask_rgba[neighbors_mask, 3] = 0.7  # Alpha
-        
-        # Plot the original image within the display region
-        ax.imshow(Cell_Img1[display_region[0]:display_region[1], display_region[2]:display_region[3]], cmap='jet', alpha=0.7)
-        # Overlay the cell and neighbors masks within the same region
-        ax.imshow(cell_mask_rgba[display_region[0]:display_region[1], display_region[2]:display_region[3]])
-        ax.imshow(neighbors_mask_rgba[display_region[0]:display_region[1], display_region[2]:display_region[3]])
-        
-        # Draw lines between the cell and its neighbors using centroids
-        for neighbor_id in neighbors:
-            neighbor_props = [prop for prop in regions if prop.label == neighbor_id]
-            if neighbor_props:
-                center_y_neighbor, center_x_neighbor = neighbor_props[0].centroid
-                
-                # Adjust centroid coordinates to the display region
-                adjusted_center_x = center_x - dx
-                adjusted_center_y = center_y - dy
-                adjusted_center_x_neighbor = center_x_neighbor - dx
-                adjusted_center_y_neighbor = center_y_neighbor - dy
-                
-                # Draw a line from the current cell to the neighbor
-                ax.plot([adjusted_center_x, adjusted_center_x_neighbor], [adjusted_center_y, adjusted_center_y_neighbor], 'yellow')
-        
-        ax.axis('off')
+        Cell_Img1 = np.ones_like(mosa)
+        for ii in range(1, len(filtered_regions)):  # Skip exterior nr_cells + 1
+            cellPixels = filtered_regions[ii].coords
+            cell_ave_Chi = np.mean(mosa[cellPixels[:, 0], cellPixels[:, 1], 0])
+            cell_ave_Phi = np.mean(mosa[cellPixels[:, 0], cellPixels[:, 1], 1])
+            for row, col in cellPixels:
+                Cell_Img1[row, col, 0] = cell_ave_Chi
+                Cell_Img1[row, col, 1] = cell_ave_Phi
+                Cell_Img1[row, col, 2] = 0  # Set blue channel to 0
 
-    # Set up the figure and slider as before
-    fig, ax = plt.subplots()
-    plt.subplots_adjust(left=0.1, bottom=0.25)
+        Cell_Img1[skel_KAM] = [0, 0, 0]
 
-    ax_slider = plt.axes([0.1, 0.1, 0.8, 0.03])
-    slider = Slider(ax_slider, 'Cell ID', 1, max(neighbours_dict.keys()), valinit=1, valstep=1)
+        # New extent limits for x-axis
+        x_min_new = 200
+        x_max_new = 780
 
-    def update(val):
-        plot_cells_and_neighbors(int(val), ax)
-        fig.canvas.draw_idle()
+        # Total extent along the x-axis
+        total_extent_x = pixel_x * row_size_chi
 
-    slider.on_changed(update)
+        # Image dimensions
+        _, image_width, _ = Cell_Img1.shape
 
-    plot_cells_and_neighbors(1, ax)
+        # Calculate new pixel indices for cropping on x-axis
+        left = int((x_min_new / total_extent_x) * image_width)
+        right = int((x_max_new / total_extent_x) * image_width)
 
-    plt.show()
+        # Since y-axis remains unchanged, use full height
+        top = 0
+        bottom = Cell_Img1.shape[0]
 
-    chi_differences, phi_differences, num_neighbours = neighbour_rotations(filtered_regions, neighbours_dict, Img_chi, Img_phi)
-    misorientations = neighbour_misorientation(filtered_regions, neighbours_dict, chi_differences, phi_differences)
+        # Crop the image accordingly
+        Cell_Img1 = Cell_Img1[top:bottom, left:right]
 
-    GND_densities = neighbour_GND(misorientations)
+        image_dir = 'C:\\Users\\adacre\\OneDrive - Danmarks Tekniske Universitet\Documents\\DTU_Project\\data\\Figures\\First_sample_of_PhD\\videos\\cells'
+        if not os.path.exists(image_dir):
+            os.makedirs(image_dir)
 
-    plt.figure()
-    plt.hist(misorientations, bins=20)
-    plt.show()
+        # Inside your loop, save each figure with a unique name
+        plt.figure(figsize=(19.2, 10.8))  # This size is in inches. DPI will affect the final pixel size.
+        plt.imshow(Cell_Img1, extent=[x_min_new, x_max_new, 0, pixel_y * col_size_chi])
+        plt.axis('off')
+        scale_bar_length = 50  
+        scale_bar_thickness = 10  
+        x_position = x_max_new * 0.95  
+        y_position = pixel_y * col_size_chi * 0.05  
 
-    plt.figure()
-    plt.hist(GND_densities, bins=20)
-    plt.show()
+        rect = patches.Rectangle((x_position, y_position), scale_bar_length, -scale_bar_thickness, linewidth=1, edgecolor='black', facecolor='black')
+        plt.gca().add_patch(rect)
 
+        # Add scale bar label
+        plt.text(x_position + scale_bar_length / 2, y_position - scale_bar_thickness * 2, '50 μm', color='black', ha='center', va='top', fontsize=14, fontweight='bold')
+
+        plt.savefig(os.path.join(image_dir, f'Cell_Averaged_Image_{i}.png'), dpi=100)  # Adjust DPI to get close to 1080p
+        plt.close()
+
+        chi_differences, phi_differences, num_neighbours = neighbour_rotations(filtered_regions, neighbours_dict, Img_chi, Img_phi)
+
+        if num_neighbours > 1000:
+            misorientations = neighbour_misorientation(filtered_regions, neighbours_dict, chi_differences, phi_differences)
+
+            plt.hist(misorientations, bins=30, density=True)
+            plt.title('Misorientations')
+            
+
+        #GND_densities = neighbour_GND(misorientations)
+
+        areas, sizes = area_sizes(filtered_regions, pixel_x, pixel_y)
+
+        #fig, ax = plt.subplots(figsize=(8, 6)) 
+
+        #fit_and_plot_lognorm(sizes, ax, '0.046')
+        #plt.tight_layout(rect=[0, 0.03, 1, 0.95])
+
+        vf = volume_fraction(areas, grain_mask, skel_KAM, pixel_x, pixel_y)
+
+    image_files = [os.path.join(image_dir, img) for img in sorted(os.listdir(image_dir)) if img.endswith('.png')]
+
+    # Output video file path
+    output_video_path = os.path.join(image_dir, 'output_video.mp4')
+
+    # Create a video from the images
+    writer = imageio.get_writer(output_video_path, fps=1)  # Adjust fps as needed
+
+    for img_path in image_files:
+        image = imageio.imread(img_path)
+        writer.append_data(image)
+
+    writer.close()
                                   
 if __name__ == '__main__':
     main()
