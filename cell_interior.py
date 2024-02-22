@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 import matplotlib.colors as colors
 from scipy.ndimage import label
 from skimage.measure import regionprops
-from scipy.stats import lognorm, rayleigh, chi, weibull_min, pearsonr
+from scipy.stats import lognorm, rayleigh, chi, weibull_min, pearsonr, norm 
 from scipy.optimize import curve_fit
 import pandas as pd
 import math
@@ -34,7 +34,7 @@ names = [file[:3] for file in com_phi]
 # Information about pixel size
 pixel_y = 0.203; pixel_x = 0.6575; # effective pixel sizes in mu
 
-
+com_chi = com_chi[:7]
 pearsons = []   
 sigma_dislocation = []
 # Loop over all files
@@ -151,7 +151,7 @@ for _ in range(len(com_chi)):
         area_ratio = np.sum(KAM_filter) / np.sum(grain_mask)
         print(f'KAM mask: percentage in walls {area_ratio * 100:.2f}% with KAM threshold: {KAM_threshold}')
 
-        if 0.69 < area_ratio < 0.71:
+        if 0.69 < area_ratio < 0.72:
             break
         elif area_ratio < 0.69:
             KAM_threshold = 0.015
@@ -413,7 +413,7 @@ for _ in range(len(com_chi)):
     print(f"Number of cells: {nr_cells1}")
 
     # Remove the cells that are too large this is done because in some dataset the scans are incomplete, leading to 
-    filtered_props = [prop for prop in filtered_props if prop.area * pixel_x * pixel_y <= 600]
+   # filtered_props = [prop for prop in filtered_props if prop.area * pixel_x * pixel_y <= 600]
 
     # Calculate areas and centroids
     areas_all = [prop.area * pixel_x * pixel_y for prop in props][1:] 
@@ -423,32 +423,32 @@ for _ in range(len(com_chi)):
 
     # Calculate the average FWHM value for each cell
     #ave_FWHM = {prop.label: np.mean([fwhm for fwhm in FWHM_Img[prop.coords[:, 0], prop.coords[:, 1]] if fwhm <= 3.5]) for prop in filtered_props}
-    ave_FWHM = {}
+  #  ave_FWHM = {}
 
-    for prop in filtered_props:
+  #  for prop in filtered_props:
         # Create a binary mask for the current object
-        mask = np.zeros(FWHM_Img.shape, dtype=bool)
-        mask[prop.coords[:, 0], prop.coords[:, 1]] = True
+   #     mask = np.zeros(FWHM_Img.shape, dtype=bool)
+   #     mask[prop.coords[:, 0], prop.coords[:, 1]] = True
 
         # Dilate the mask
-        dilated_mask = binary_dilation(mask, disk(1))
+  #      dilated_mask = binary_dilation(mask, disk(1))
 
         # Find the coordinates of the dilated object
-        dilated_coords = np.array(np.nonzero(dilated_mask)).T
+   #     dilated_coords = np.array(np.nonzero(dilated_mask)).T
 
         # Calculate the average FWHM for the dilated object
-        ave_FWHM[prop.label] = np.mean([fwhm for fwhm in FWHM_Img[dilated_coords[:, 0], dilated_coords[:, 1]] if fwhm <= 3.5])
-    std_FWHM = {prop.label: np.std([fwhm for fwhm in FWHM_Img[prop.coords[:, 0], prop.coords[:, 1]] if fwhm <= 3.5]) for prop in filtered_props}
-    fwhm_FWHM = {prop.label: std_FWHM[prop.label] * 2.355 for prop in filtered_props}
+  #      ave_FWHM[prop.label] = np.mean([fwhm for fwhm in FWHM_Img[dilated_coords[:, 0], dilated_coords[:, 1]] if fwhm <= 3.5])
+ #   std_FWHM = {prop.label: np.std([fwhm for fwhm in FWHM_Img[prop.coords[:, 0], prop.coords[:, 1]] if fwhm <= 3.5]) for prop in filtered_props}
+ #   fwhm_FWHM = {prop.label: std_FWHM[prop.label] * 2.355 for prop in filtered_props}
 
-    std_FWHM_values = [std_FWHM[prop.label] for prop in filtered_props][1:]
-    std_FWHM_values = np.radians(std_FWHM_values)
+#    std_FWHM_values = [std_FWHM[prop.label] for prop in filtered_props][1:]
+  #  std_FWHM_values = np.radians(std_FWHM_values)
 
-    fwhm_ave_values = [ave_FWHM[prop.label] for prop in filtered_props][1:]
-    fwhm_ave_values = np.radians(fwhm_ave_values)
+ #   fwhm_ave_values = [ave_FWHM[prop.label] for prop in filtered_props][1:]
+ #   fwhm_ave_values = np.radians(fwhm_ave_values)
 
-    fwhm_fwhm_values = [fwhm_FWHM[prop.label] for prop in filtered_props][1:]
-    fwhm_fwhm_values = np.radians(fwhm_fwhm_values)
+ #   fwhm_fwhm_values = [fwhm_FWHM[prop.label] for prop in filtered_props][1:]
+ #   fwhm_fwhm_values = np.radians(fwhm_fwhm_values)
 
     # Plotting
     #plt.figure()
@@ -456,74 +456,115 @@ for _ in range(len(com_chi)):
     #plt.xlabel('Cell Size in Microns (sqrt of area)')
     #plt.ylabel('Average FWHM (radians)')
     #plt.title('Average FWHM vs Cell Size')
-    if len(size_from_area1) >= 2 and len(fwhm_ave_values) >= 2:
-        correlation_coefficient_FWHM = pearsonr(size_from_area1, fwhm_fwhm_values)
-        print(f"Pearson correlation coefficient for the FWHM: {correlation_coefficient_FWHM[0]:.4e}")
-        print(f"Pearson correlation p-value for the FWHM: {correlation_coefficient_FWHM[1]:.4e}")
+    #if len(size_from_area1) >= 2 and len(fwhm_ave_values) >= 2:
+        #correlation_coefficient_FWHM = pearsonr(size_from_area1, fwhm_fwhm_values)
+        #print(f"Pearson correlation coefficient for the FWHM: {correlation_coefficient_FWHM[0]:.4e}")
+        #print(f"Pearson correlation p-value for the FWHM: {correlation_coefficient_FWHM[1]:.4e}")
 
-        coefficients_FWHM = np.polyfit(size_from_area1, fwhm_fwhm_values, 1)
-        polynomial_FWHM = np.poly1d(coefficients_FWHM)
+     #   coefficients_FWHM = np.polyfit(size_from_area1, fwhm_fwhm_values, 1)
+       # polynomial_FWHM = np.poly1d(coefficients_FWHM)
 
-        plt.figure()
-        plt.scatter(size_from_area1, fwhm_fwhm_values)
-        plt.plot(size_from_area1, polynomial_FWHM(size_from_area1), color='red')
-        plt.xlabel('Cell Size in Microns (sqrt of area)')
-        plt.ylabel('FWHM (radians)')
-        plt.title('FWHM of FWHM vs Cell Size ' + names[_])
-        plt.legend(['Data', 'linear fit'])
-        plt.annotate(f"y = {coefficients_FWHM[0]:.4f}x + {coefficients_FWHM[1]:.4f}", (0.1, 0.9), xycoords='axes fraction')
+       # plt.figure()
+       # plt.scatter(size_from_area1, fwhm_fwhm_values)
+     #   plt.plot(size_from_area1, polynomial_FWHM(size_from_area1), color='red')
+      #  plt.xlabel('Cell Size in Microns (sqrt of area)')
+      #  plt.ylabel('FWHM (radians)')
+#plt.title('FWHM of FWHM vs Cell Size ' + names[_])
+     #   plt.legend(['Data', 'linear fit'])
+     #   plt.annotate(f"y = {coefficients_FWHM[0]:.4f}x + {coefficients_FWHM[1]:.4f}", (0.1, 0.9), xycoords='axes fraction')
 
         ## Write the data to a csv file
         # Create a dictionary of the data
-        data = {'Cell': [prop.label for prop in filtered_props][1:],
-                'Area in microns': areas_all1,
-                'Size in microns': size_from_area1,
-                'Mean of FWHM': fwhm_ave_values,
-                'Std of FWHM': std_FWHM_values,
-                'FWHM of FWHM': fwhm_fwhm_values}
+       # data = {'Cell': [prop.label for prop in filtered_props][1:],
+      #          'Area in microns': areas_all1,
+      #          'Size in microns': size_from_area1,
+      #          'Mean of FWHM': fwhm_ave_values,
+       #         'Std of FWHM': std_FWHM_values,
+     #           'FWHM of FWHM': fwhm_fwhm_values}
 
         # Create a dataframe from the dictionary
-        df = pd.DataFrame(data)
+       # df = pd.DataFrame(data)
 
         # Write the dataframe to a csv file
         #df.to_csv('FWHM_cells_4.6_radians.csv', index=False)
-    if len(size_from_area1) >= 2 and len(fwhm_ave_values) >= 2:
-        correlation_fwhm = np.corrcoef(size_from_area1, fwhm_ave_values)[0, 1]
-        print(f"Pearson correlation coefficient: {correlation_fwhm:.4f}")
+    #if len(size_from_area1) >= 2 and len(fwhm_ave_values) >= 2:
+        #correlation_fwhm = np.corrcoef(size_from_area1, fwhm_ave_values)[0, 1]
+       # print(f"Pearson correlation coefficient: {correlation_fwhm:.4f}")
 
-        coefficients = np.polyfit(size_from_area1, fwhm_ave_values, 1)
+        #coefficients = np.polyfit(size_from_area1, fwhm_ave_values, 1)
 
-        polynomial = np.poly1d(coefficients)
+       # polynomial = np.poly1d(coefficients)
 
+       # plt.figure()
+##plt.scatter(size_from_area1, fwhm_ave_values)
+      #  plt.plot(size_from_area1, polynomial(size_from_area1), color='red')
+     #   plt.title('Average FWHM vs Cell Size ' + names[_])
+#plt.xlabel('Cell Size in Microns (sqrt of area)')
+     #   plt.ylabel('Average FWHM (radians)')
+    #    plt.legend(['Data', 'linear fit'])
+    ##    plt.annotate(f"y = {coefficients[0]:.4f}x + {coefficients[1]:.4f}", (0.1, 0.9), xycoords='axes fraction')
+
+    #    correlation_coefficient = pearsonr(size_from_area1, fwhm_ave_values)
+     #   print(f"Pearson correlation coefficient: {correlation_coefficient[0]:.4e}")
+    #    print(f"Pearson correlation p-value: {correlation_coefficient[1]:.4e}")
+
+     ##   pearsons.append(correlation_coefficient[0])
+  #  else:
+      #  pearsons.append(np.nan)
+
+    def fit_and_plot_fwhm_component(FWHM_data, title):
+        # Mask to ignore NaN values for fitting
+        valid_data = FWHM_data[~np.isnan(FWHM_data)]
+        
+        # Histogram of the data
+        hist, bin_edges = np.histogram(valid_data, bins=50, density=True)
+        bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
+        
+        # Initial guesses for Gaussian fit parameters
+        initial_guess = [max(hist), np.mean(valid_data), np.std(valid_data)]
+        
+        # Perform Gaussian fit
+        popt, pcov = curve_fit(gaussian, bin_centers, hist, p0=initial_guess)
+        
+        # Plotting the FWHM histogram and the fit
         plt.figure()
-        plt.scatter(size_from_area1, fwhm_ave_values)
-        plt.plot(size_from_area1, polynomial(size_from_area1), color='red')
-        plt.title('Average FWHM vs Cell Size ' + names[_])
-        plt.xlabel('Cell Size in Microns (sqrt of area)')
-        plt.ylabel('Average FWHM (radians)')
-        plt.legend(['Data', 'linear fit'])
-        plt.annotate(f"y = {coefficients[0]:.4f}x + {coefficients[1]:.4f}", (0.1, 0.9), xycoords='axes fraction')
+        plt.hist(valid_data, bins=50, density=True, alpha=0.6, label='FWHM Data')
+        x_fit = np.linspace(min(valid_data), max(valid_data)-0.015, 200)
+        plt.plot(x_fit, gaussian(x_fit, *popt), 'r-', label='Gaussian Fit')
+        
+        plt.xlabel('FWHM values')
+        plt.xlim(0, 0.025)
+        plt.ylabel('Density')
+        plt.title(title)
+        plt.legend()
+ 
+        return popt
+    
+    FWHM_Chi_flat = np.concatenate(FWHM_Chi).ravel() / 180 * np.pi
+    FWHM_Phi_flat = np.concatenate(FWHM_Phi).ravel() / 180 * np.pi
 
-        correlation_coefficient = pearsonr(size_from_area1, fwhm_ave_values)
-        print(f"Pearson correlation coefficient: {correlation_coefficient[0]:.4e}")
-        print(f"Pearson correlation p-value: {correlation_coefficient[1]:.4e}")
+    # Fit and plot for Chi component
+    popt_chi = fit_and_plot_fwhm_component(FWHM_Chi_flat, 'Gaussian Fit to FWHM Chi Component')
 
-        pearsons.append(correlation_coefficient[0])
-    else:
-        pearsons.append(np.nan)
+    # Fit and plot for Phi component
+    popt_phi = fit_and_plot_fwhm_component(FWHM_Phi_flat, 'Gaussian Fit to FWHM Phi Component')
+
+    # Printing fit results for reference
+    print(f"Chi Fit Parameters: Height={popt_chi[0]}, Center={popt_chi[1]}, Width={popt_chi[2]}")
+    print(f"Phi Fit Parameters: Height={popt_phi[0]}, Center={popt_phi[1]}, Width={popt_phi[2]}")
 
 
 # Plot the Pearson correlation coefficient for each sample
-plt.figure()
-plt.plot(names[2:], pearsons[2:], lw=2, marker='x', ls='--')
-plt.xlabel('Sample number')
-plt.ylabel('Pearson correlation coefficient')
-plt.title('Pearson correlation coefficient for each sample with grains')
+#plt.figure()
+#plt.plot(names[2:], pearsons[2:], lw=2, marker='x', ls='--')
+#plt.xlabel('Sample number')
+#plt.ylabel('Pearson correlation coefficient')
+#plt.title('Pearson correlation coefficient for each sample with grains')
 
-plt.figure()
-plt.plot(names[2:], sigma_dislocation[2:], lw=2, marker='x', ls='--')
-plt.xlabel('Sample number')
-plt.ylabel('Sigma of "dislocation"')
-plt.title('Sigma of dislocation for each sample with grains (second gaussian fitted to FWHM distribution)')
+#plt.figure()
+#plt.plot(names[2:], sigma_dislocation[2:], lw=2, marker='x', ls='--')
+#plt.xlabel('Sample number')
+#plt.ylabel('Sigma of "dislocation"')
+#plt.title('Sigma of dislocation for each sample with grains (second gaussian fitted to FWHM distribution)')
 
 plt.show()

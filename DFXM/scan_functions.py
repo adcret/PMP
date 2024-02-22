@@ -1,15 +1,18 @@
 import fabio
+import cv2
 from tqdm import tqdm
-from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 from matplotlib.widgets import Slider
 import numpy as np
-from skimage.morphology import binary_erosion, binary_dilation, disk, skeletonize, remove_small_objects, binary_opening, dilation
+from skimage.morphology import binary_erosion, binary_dilation, disk, skeletonize, remove_small_objects, binary_opening, dilation, medial_axis
 from scipy.ndimage import label
-from skimage.feature import canny
+from skimage import feature, exposure
 from skimage.measure import regionprops
 import matplotlib.pyplot as plt
 import matplotlib.colors as colors
 import matplotlib.patches as patches
+import matplotlib.gridspec as gridspec
+from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 from scipy.stats import norm, lognorm, rayleigh, chi, maxwell, kstest
 from scipy.optimize import curve_fit
 from rtree import index
@@ -39,21 +42,43 @@ def extract_number(file):
     substring = file[:u_index] if u_index != -1 else file
     return int(''.join(filter(str.isdigit, substring)))
 
-def process_data(path, file):
+def process_data(path, file, method, grain_mask=None):
+    # Process the data from the given file based on the method
+    if method == 'COM':
+        file = fabio.open(os.path.join(path, file))
+        A = file.data
+        B1 = A.T
+        B = np.flipud(B1)
+        TF = np.isnan(B)
+        average = np.nanmean(A)
+        Img = B - average
+        maximum = np.nanmax(Img)
+        minimum = np.nanmin(Img)
+        row_size, col_size = A.shape
+        header = file.header
+        return Img, maximum, minimum, average, TF, row_size, col_size, header
+    elif method == 'FWHM':
+        if grain_mask is None:
+            raise ValueError("grain_mask and fwhm_chi must be provided for FWHM processing.")
+        file = fabio.open(os.path.join(path, file))
+        header = file.header
+        A = file.data
+        B1 = A.T
+        B = np.flipud(B1)
+        row_size, col_size = A.shape
+        TF = np.isnan(A)
+        B[~grain_mask] = np.NaN  # Apply grain mask and set outside values to 2
+        B = np.minimum(np.abs(B), 2) 
+        Img = B
+        average = np.nanmean(A)
+        maximum = np.nanmax(Img)
+        minimum = np.nanmin(Img)
+        return Img, maximum, minimum, average, TF, row_size, col_size, header
+    else:
+        raise ValueError("Invalid method. Please choose 'COM' or 'FWHM'.")
 
-    # Process the data from the given file
+
     
-    chi_file = fabio.open(os.path.join(path, file))
-    A = chi_file.data
-    row_size, col_size = A.shape
-    B1 = A.T
-    B = np.flipud(B1)
-    TF = np.isnan(B)
-    average = np.nanmean(A)
-    Img = B - average
-    maximum = np.nanmax(Img)
-
-    return Img, maximum, average, TF, row_size, col_size
 
 def find_grain(TF):
 
@@ -95,6 +120,12 @@ def scale_image(Img):
 
     return scaled_Img
 
+def scale_image_global(Img, global_min, global_max):
+    # Scale the image between 0 and 1 using global min and max
+    scaled_Img = (Img - global_min) / (global_max - global_min)
+    return scaled_Img
+    
+
 def RGB_image(chi_scaled, phi_scaled):
 
     # Create a RGB mosaicity map from the scaled chi and phi images
@@ -106,6 +137,8 @@ def RGB_image(chi_scaled, phi_scaled):
     RGB_scaled[RGB_scaled > 1] = 1
     RGB_scaled[RGB_scaled < 0] = 0
     RGB_scaled = colors.hsv_to_rgb(RGB_scaled)
+
+    RGB_scaled = RGB_scaled * 0.85 #Make the colours pop baby
 
     return mosa, RGB_scaled
 
@@ -125,8 +158,8 @@ def calculate_KAM(col_size, row_size, grain_mask, Chi_Img, Phi_Img, kernelSize):
                 jEnd = min(jj + kernelSize, row_size - 1)
 
                 # Calculate the kernel difference
-                kernel_diff = np.abs(Chi_Img[iStart:iEnd+1, jStart:jEnd+1] - Chi_Img[ii, jj]) + \
-                            np.abs(Phi_Img[iStart:iEnd+1, jStart:jEnd+1] - Phi_Img[ii, jj])
+                kernel_diff = np.sqrt(np.abs(Chi_Img[iStart:iEnd+1, jStart:jEnd+1] - Chi_Img[ii, jj])**2 + \
+                            np.abs(Phi_Img[iStart:iEnd+1, jStart:jEnd+1] - Phi_Img[ii, jj])**2)
                 nr_pixels_ROI = (iEnd - iStart + 1) * (jEnd - jStart + 1)
 
                 # Store the average misorientation angle in the KAM map
@@ -137,7 +170,7 @@ def calculate_KAM(col_size, row_size, grain_mask, Chi_Img, Phi_Img, kernelSize):
 
 def KAM_refine(KAM, grain_mask):
     # Create KAM filter and calculate area ratio
-    KAM_list = np.arange(0.01, 0.085, 0.001).tolist()
+    KAM_list = np.arange(0.005, 0.085, 0.001).tolist()
     KAM_threshold_updated = False
 
     for value in KAM_list:
@@ -152,7 +185,7 @@ def KAM_refine(KAM, grain_mask):
         print(f'KAM mask: percentage in walls {area_ratio * 100:.2f}% with KAM threshold: {KAM_threshold}')
         
         # Adjust KAM_threshold based on the area ratio
-        if 0.69 < area_ratio < 0.72 or area_ratio < 0.65:
+        if 0.69 < area_ratio < 0.71 or area_ratio < 0.65:
             if area_ratio < 0.65:
                 # Update KAM_threshold to 0.015 if the area ratio is less than 0.65
                 KAM_threshold = 0.01
@@ -166,6 +199,7 @@ def KAM_refine(KAM, grain_mask):
     
     # Apply morphological operations to refine the KAM mask
     se = disk(1)
+    #KAM_mask = binary_dilation(KAM_filter, se)
     KAM_mask = binary_erosion(KAM_filter, se)
     KAM_mask = binary_dilation(KAM_mask, se)
     
@@ -183,7 +217,7 @@ def calculate_FWHM(Img, grain_mask, row_size, col_size, threshold, kernelSize):
 
     ll = 0
     kk = 0
-    FWHM_filter = np.zeros((row_size, col_size))
+    FWHM_filter = np.zeros((col_size, row_size))
     # Generate FWHM filter
     for ii in range(col_size):
         for jj in range(row_size):
@@ -213,7 +247,7 @@ def FWHM_mask(FWHM_filter, grain_mask):
     # return the FWHM mask and the skeleton of the FWHM mask
     # the threshold is used to filter the FWHM map and is in degrees
 
-    Edge_Img = binary_dilation(canny(grain_mask), disk(1))
+    Edge_Img = binary_dilation(feature.canny(grain_mask), disk(1))
     FWHM_filter[Edge_Img] = 1
     FWHM_filter = binary_erosion(FWHM_filter, disk(1, strict_radius= True))
     FWHM_mask = binary_dilation(FWHM_filter, disk(1, strict_radius= True))
@@ -263,13 +297,20 @@ def compute_bbox(coords):
         max_row, max_col = np.max(coords, axis=0)
         return (min_row, min_col, max_row, max_col)
 
-def dilate_mask(mask):
-    return binary_dilation(mask, disk(5))
+def dilate_mask(mask, size=5):
+    """
+    Dilates a given mask using a disk of a specified size.
+    """
+    return binary_dilation(mask, disk(size))
 
-def parallel_dilate_masks(masks):
-    with ProcessPoolExecutor() as executor:
-        result = list(tqdm(executor.map(dilate_mask, masks), total=len(masks), desc="Dilating masks"))
-    return result
+def parallel_dilate_masks(masks, size=5):
+    """
+    Dilates multiple masks in parallel.
+    """
+    with ThreadPoolExecutor() as executor:
+        # Wrap the call to dilate_mask with size argument using lambda or partial
+        results = list(tqdm(executor.map(lambda mask: dilate_mask(mask, size), masks), total=len(masks), desc="Dilating masks"))
+    return results
 
 def find_neighbours(regions, labeled_array):
 
@@ -381,21 +422,20 @@ def neighbour_misorientation(regions, neighbours_dict, ave_Chi, ave_Phi):
     return misorientations
 
 
-def neighbour_GND(misorientations, k=1.5):
-    # Constants for Aluminium
-    b_Al = 0.286e-9  # Burgers vector in meters
-    
-    # Effective pixel sizes in micrometers (mu)
-    pixel_y = 0.203
-    pixel_x = 0.6575
+def neighbour_GND(misorientations, ave_cell, k=1.5):
+    # Burgers vector in Al considered here as sqrt(2)/2 * a_Al
+    b_Al = 0.286e-9  
+
+    # avergae cell size in meters
+    D = ave_cell * 1e-6
 
     GND_densities = []
 
     for i in misorientations:
-        misorientation_rad = np.deg2rad(i)
+        misorientation_rad = np.deg2rad(i)  # Convert misorientation angle from degrees to radians
 
-        # Calculate GND density
-        rho_GND = (k * misorientation_rad) / (b_Al * 0.0000000003)
+        # Calculate GND density using the corrected formula
+        rho_GND = (k * misorientation_rad) / (b_Al * D)
         GND_densities.append(rho_GND)
 
     return GND_densities
@@ -445,6 +485,41 @@ def fit_and_plot_lognorm(data, ax, label):
     except Exception as e:
         print(f"Error fitting {label}: {e}")
         ax.text(0.5, 0.5, 'Error in fitting', horizontalalignment='center', verticalalignment='center', transform=ax.transAxes)
+    
+
+
+def fit_and_plot_rayleigh(data, ax, label):
+    # Remove NaNs and infinite values from data
+    data = np.array(data)
+    data = data[np.isfinite(data)]
+    data = data[data < 25]  # remove outliers
+
+    # Handle empty data or data with insufficient values
+    if len(data) < 10:
+        ax.text(0.5, 0.5, 'Insufficient data', horizontalalignment='center', verticalalignment='center', transform=ax.transAxes)
+        ax.set_title(label)
+        return
+
+    try:
+        # Fit the log-normal distribution to the data
+        params = rayleigh.fit(data)
+        mu, sigma = params
+        x = np.linspace(min(data), max(data), 100)
+        pdf = rayleigh.pdf(x, *params)
+        ax.hist(data, bins=50, range=(0, 1), density=True, alpha=0.9)
+        ax.plot(x, pdf, 'r-', lw = 4)
+        mean_size = np.mean(data)
+        ax.annotate(f'Mean: {mean_size:.2f} mu', xy=(0.5, 0.7), xycoords='axes fraction', ha='center', va='center', fontsize=14)
+        ax.annotate(f'Sigma: {sigma:.2f}', xy=(0.5, 0.6), xycoords='axes fraction', ha='center', va='center', fontsize=14)
+        ax.set_xlabel('Misorientation', fontsize=20)
+        ax.set_ylabel('PDF', fontsize=20)
+        ax.set_xlim(0, 18)
+        #ax.set_title(label, fontsize=20)
+        print(f'Fitted rayleigh for {label} epsilon with mu={mu:.2f}, sigma={sigma:.2f}, D={D:.2e}')
+    except Exception as e:
+        print(f"Error fitting {label}: {e}")
+        ax.text(0.5, 0.5, 'Error in fitting', horizontalalignment='center', verticalalignment='center', transform=ax.transAxes)
+    
 
 def anisotropy(regions):
     
@@ -476,6 +551,70 @@ def volume_fraction(areas, grain_mask, skeleton, pixel_x, pixel_y):
     print(f'Volume fraction: {volume_fraction * 100:.2f}%')
     return volume_fraction
 
+
+def create_2d_colormap(x, y, x_min, x_max, y_min, y_max):
+    # Normalize x and y to range [0, 1]
+    x_normalized = (x - x_min) / (x_max - x_min)
+    y_normalized = (y - y_min) / (y_max - y_min)
+    
+    # Create RGB values based on x and y positions
+    # Here we create a simple example where color varies with x and y linearly
+    r = x_normalized
+    g = np.ones_like(x_normalized)  # fixed at 1 for all points as per your description
+    b = y_normalized
+    
+    # Ensure RGB values are between 0 and 1
+    r = np.clip(r, 0, 1)
+    b = np.clip(b, 0, 1)
+    
+    # Stack to create RGB array
+    rgb = np.dstack((r, g, b))
+    return rgb
+
+
+def get_boundary_length_in_microns(boundary_pixels, pixel_size_x, pixel_size_y):
+    """
+    Calculate the length of a boundary in microns, taking into account anisotropic pixel dimensions.
+    """
+    distances = [np.sqrt(((p1[0] - p2[0]) * pixel_size_x) ** 2 + ((p1[1] - p2[1]) * pixel_size_y) ** 2)
+                 for p1, p2 in zip(boundary_pixels[:-1], boundary_pixels[1:])]
+    return sum(distances)
+
+def get_pixel_boundary(labeled_array, cell1_label, cell2_label, dilated_masks):
+    """
+    Find the boundary pixels between two cells.
+    """
+    mask1 = dilated_masks[cell1_label]
+    mask2 = dilated_masks[cell2_label]
+    boundary = mask1 & mask2
+    boundary_coords = np.argwhere(boundary)
+    return boundary_coords.tolist()
+
+def process_all_cells_and_neighbors(regions, labeled_array, neighbours_dict, pixel_size_x, pixel_size_y):
+    """
+    Calculate boundary lengths between each cell and its neighbors, storing results in the same dictionary,
+    utilizing parallel processing for mask dilation.
+    """
+    # Prepare all masks for dilation
+    masks = [(labeled_array == prop.label).astype(np.bool_) for prop in regions]
+    
+    # Dilate all masks in parallel
+    dilated_masks_list = parallel_dilate_masks(masks)
+    
+    # Convert list of dilated masks back into a dictionary with prop.label as keys
+    dilated_masks = {prop.label: mask for prop, mask in zip(regions, dilated_masks_list)}
+    
+    updated_neighbours_dict = {}
+    for cell_id, neighbours in neighbours_dict.items():
+        neighbour_list = list(neighbours)
+        distance_list = []
+        for neighbour_id in neighbour_list:
+            boundary_pixels = get_pixel_boundary(labeled_array, cell_id, neighbour_id, dilated_masks)
+            boundary_length = get_boundary_length_in_microns(boundary_pixels, pixel_size_x, pixel_size_y)
+            distance_list.append(boundary_length)
+        updated_neighbours_dict[cell_id] = [neighbour_list, distance_list]
+    
+    return updated_neighbours_dict
 
 """
 ## ADD TO Script if the cells want to be visualised interactively ## 
