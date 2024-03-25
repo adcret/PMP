@@ -13,9 +13,10 @@ import matplotlib.colors as colors
 import matplotlib.patches as patches
 import matplotlib.gridspec as gridspec
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
-from scipy.stats import norm, lognorm, rayleigh, chi, maxwell, kstest
+from scipy.stats import norm, lognorm, rayleigh, chi, maxwell, kstest, gamma
 from scipy.optimize import curve_fit
 from rtree import index
+import math
 import time 
 import csv
 import os
@@ -138,7 +139,7 @@ def RGB_image(chi_scaled, phi_scaled):
     RGB_scaled[RGB_scaled < 0] = 0
     RGB_scaled = colors.hsv_to_rgb(RGB_scaled)
 
-    RGB_scaled = RGB_scaled * 0.85 #Make the colours pop baby
+    RGB_scaled[..., 2] *= 0.75  # reduce the intensity of the blue channel --> this makes things less white (also adapt the scale in chi phi plot)
 
     return mosa, RGB_scaled
 
@@ -354,8 +355,8 @@ def neighbour_rotations(regions, neighbours_dict, chi_img, phi_img):
 
     # Precompute the average Chi and Phi for each cell
     # Now you can calculate the averages using Chi_Img and Phi_Img that have not been scaled for RGB values, true data
-    ave_Chi = {prop.label: np.mean(chi_img[prop.coords[:, 0], prop.coords[:, 1]]) for prop in regions}
-    ave_Phi = {prop.label: np.mean(phi_img[prop.coords[:, 0], prop.coords[:, 1]]) for prop in regions}
+    ave_Chi = {prop.label: np.median(chi_img[prop.coords[:, 0], prop.coords[:, 1]]) for prop in regions}
+    ave_Phi = {prop.label: np.median(phi_img[prop.coords[:, 0], prop.coords[:, 1]]) for prop in regions}
 
 
     chi_differences = []
@@ -393,7 +394,10 @@ def angular_difference(angle1, angle2):
     diff = abs(angle1 - angle2)
     return min(diff, 360 - diff)
 
-def neighbour_misorientation(regions, neighbours_dict, ave_Chi, ave_Phi):
+def neighbour_misorientation(regions, neighbours_dict, chi_img, phi_img):
+
+    ave_Chi = {prop.label: np.median(chi_img[prop.coords[:, 0], prop.coords[:, 1]]) for prop in regions}
+    ave_Phi = {prop.label: np.median(phi_img[prop.coords[:, 0], prop.coords[:, 1]]) for prop in regions}
 
     misorientations = []
 
@@ -466,33 +470,28 @@ def fit_and_plot_lognorm(data, ax, label):
         params = lognorm.fit(data)
         shape, loc, scale = params
         mu = np.log(scale)
-        ratio_mu_sigma = mu / shape
         x = np.linspace(min(data), max(data), 100)
         pdf = lognorm.pdf(x, *params)
-        ax.hist(data, bins=50, range=(0, 18), density=True, alpha=0.9)
+        ax.hist(data, bins=35, range=(0, 18), density=True, alpha=0.8)
         ax.plot(x, pdf, 'r-', lw = 4)
-        mean_size = np.mean(data)
-        D, p_value = kstest(data, lambda x: lognorm.cdf(x, *params))
-        ax.annotate(f'p-value={p_value:.2e}', xy=(0.5, 0.8), xycoords='axes fraction', ha='center', va='center', fontsize=14)
-        ax.annotate(f'Mean: {mean_size:.2f} mu', xy=(0.5, 0.7), xycoords='axes fraction', ha='center', va='center', fontsize=14)
-        ax.annotate(f'Mu: {mu:.2f}, Sigma: {shape:.2f}', xy=(0.5, 0.6), xycoords='axes fraction', ha='center', va='center', fontsize=14)
-        ax.annotate(f'Mu/Sigma Ratio: {ratio_mu_sigma:.2f}', xy=(0.5, 0.5), xycoords='axes fraction', ha='center', va='center', fontsize=14)
-        ax.set_xlabel('Cell Size', fontsize=20)
-        ax.set_ylabel('PDF', fontsize=20)
-        ax.set_xlim(0, 18)
-        #ax.set_title(label, fontsize=20)
-        print(f'Fitted lognormal for {label} epsilon with mu={mu:.2f}, sigma={shape:.2f}, D={D:.2e}, p-value={p_value:.2e}, ratio={ratio_mu_sigma:.2f}')
+        ax.set_xlabel('Cell Size ($\mu$m)', fontsize=16)
+        ax.set_ylabel('PDF', fontsize=16)
+        ax.set_xlim(0, 16)
+        ax.tick_params(axis='x', labelsize=14)
+        ax.tick_params(axis='y', labelsize=14)
+        ax.set_title(label, fontsize=20)
+        ax.legend(['Log-normal distribution', 'Cell Sizes'], fontsize=14)
     except Exception as e:
         print(f"Error fitting {label}: {e}")
         ax.text(0.5, 0.5, 'Error in fitting', horizontalalignment='center', verticalalignment='center', transform=ax.transAxes)
     
 
 
-def fit_and_plot_rayleigh(data, ax, label):
+def fit_and_plot_chi(data, ax, label):
     # Remove NaNs and infinite values from data
     data = np.array(data)
     data = data[np.isfinite(data)]
-    data = data[data < 25]  # remove outliers
+    data = data[data > 0.0001]  # remove outliers
 
     # Handle empty data or data with insufficient values
     if len(data) < 10:
@@ -502,20 +501,19 @@ def fit_and_plot_rayleigh(data, ax, label):
 
     try:
         # Fit the log-normal distribution to the data
-        params = rayleigh.fit(data)
-        mu, sigma = params
+        params = chi.fit(data)
         x = np.linspace(min(data), max(data), 100)
-        pdf = rayleigh.pdf(x, *params)
-        ax.hist(data, bins=50, range=(0, 1), density=True, alpha=0.9)
+        pdf = chi.pdf(x, *params)
+        ax.hist(data, bins=35, density=True, alpha=0.8)
         ax.plot(x, pdf, 'r-', lw = 4)
-        mean_size = np.mean(data)
-        ax.annotate(f'Mean: {mean_size:.2f} mu', xy=(0.5, 0.7), xycoords='axes fraction', ha='center', va='center', fontsize=14)
-        ax.annotate(f'Sigma: {sigma:.2f}', xy=(0.5, 0.6), xycoords='axes fraction', ha='center', va='center', fontsize=14)
-        ax.set_xlabel('Misorientation', fontsize=20)
-        ax.set_ylabel('PDF', fontsize=20)
-        ax.set_xlim(0, 18)
-        #ax.set_title(label, fontsize=20)
-        print(f'Fitted rayleigh for {label} epsilon with mu={mu:.2f}, sigma={sigma:.2f}, D={D:.2e}')
+        #mean_size = np.mean(data)
+        ax.set_xlabel('Misorientation (°)', fontsize=16)
+        ax.set_ylabel('PDF', fontsize=16)
+        ax.set_xlim(0, max(data)+0.1)
+        ax.tick_params(axis='x', labelsize=14)
+        ax.tick_params(axis='y', labelsize=14)
+        ax.set_title(label, fontsize=20)
+        ax.legend(['$\chi$-distribution', 'Misorientations'], fontsize=14)
     except Exception as e:
         print(f"Error fitting {label}: {e}")
         ax.text(0.5, 0.5, 'Error in fitting', horizontalalignment='center', verticalalignment='center', transform=ax.transAxes)
@@ -615,6 +613,11 @@ def process_all_cells_and_neighbors(regions, labeled_array, neighbours_dict, pix
         updated_neighbours_dict[cell_id] = [neighbour_list, distance_list]
     
     return updated_neighbours_dict
+
+def gaussian(x, height, center, width):
+    return height * np.exp(-(x - center)**2 / (2*width**2))
+def two_gaussians(x, h1, c1, w1, h2, c2, w2):
+    return gaussian(x, h1, c1, w1) + gaussian(x, h2, c2, w2)
 
 """
 ## ADD TO Script if the cells want to be visualised interactively ## 

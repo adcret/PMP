@@ -48,13 +48,13 @@ def inv_polefigure_colors(o_grid, test_grid, float_bit=np.float16):
     
     # Define the RGB values for the color gradient
     key_xy_RGBs = np.array([
-        [1, 1, 1, 1],    # White
-        [0, 1, 1, 1],    # Cyan
+        [1, 1, 0.75, 1],    # White
+        [0, 1, 0.75, 1],    # Cyan
         [0, 1, 0, 1],    # Green
         [1, 0.65, 0, 1], # Orange
         [0.9, 0, 0, 1],    # Red
-        [0, 0, 1, 1],    # Blue
-        [1, 0, 0.5, 1]   # Magenta
+        [0, 0, 0.75, 1],    # Blue
+        [1, 0, 0.5*0.75, 1]   # Magenta
     ], dtype=float_bit)*0.85
 
     # Extract the angular data for the original and test grids
