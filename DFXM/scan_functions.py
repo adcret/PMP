@@ -60,7 +60,7 @@ def process_data(path, file, method, grain_mask=None):
         return Img, maximum, minimum, average, TF, row_size, col_size, header
     elif method == 'FWHM':
         if grain_mask is None:
-            raise ValueError("grain_mask and fwhm_chi must be provided for FWHM processing.")
+            raise ValueError("grain_mask must be provided for FWHM processing.")
         file = fabio.open(os.path.join(path, file))
         header = file.header
         A = file.data
