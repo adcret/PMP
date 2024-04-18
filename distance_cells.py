@@ -264,7 +264,7 @@ orientations = np.stack((Chi_Img[grain1], Phi_Img[grain1]), axis=-1)
 orientations_image = np.stack((Chi_Img, Phi_Img, np.ones_like(Chi_Img)), axis=-1)
 
 # Creating combined mask
-combined_mask = (Chi_Img > -0.15) & (Chi_Img < 0.15) & (Phi_Img> -0.15) & (Phi_Img < -0.12)
+combined_mask = (Chi_Img > -0.2) & (Chi_Img < 0.2) & (Phi_Img> -0.2) & (Phi_Img < -0.10)
 
 plt.figure()
 plt.imshow(combined_mask, extent=[0, pixel_x * row_size, 0, pixel_y * col_size])
@@ -459,19 +459,6 @@ plt.gca().invert_yaxis()
 
 # Flip the image data upside down
 flipped_mask = np.flipud(mask)
-
-# Define the thresholds for yellow
-red_threshold = 0.84  # adjust as needed
-green_threshold = 0.82  # adjust as needed
-blue_threshold = 0.001  # adjust as needed
-
-# Find yellow pixels
-yellow_pixels = (Cell_Img_orientations[:, :, 0] > red_threshold) & \
-                (Cell_Img_orientations[:, :, 1] > green_threshold) & \
-                (Cell_Img_orientations[:, :, 2] < blue_threshold)
-
-# Set yellow pixels to white
-Cell_Img_orientations[yellow_pixels] = [1, 1, 1]
 
 
 # Plot the Cell_Img

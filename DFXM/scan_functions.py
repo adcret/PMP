@@ -79,8 +79,6 @@ def process_data(path, file, method, grain_mask=None):
         raise ValueError("Invalid method. Please choose 'COM' or 'FWHM'.")
 
 
-    
-
 def find_grain(TF):
 
     grain = ~TF
