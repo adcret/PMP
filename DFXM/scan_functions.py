@@ -169,7 +169,7 @@ def calculate_KAM(col_size, row_size, grain_mask, Chi_Img, Phi_Img, kernelSize):
 
 def KAM_refine(KAM, grain_mask):
     # Create KAM filter and calculate area ratio
-    KAM_list = np.arange(0.005, 0.085, 0.001).tolist()
+    KAM_list = np.arange(0.001, 0.05, 0.0002).tolist()
     KAM_threshold_updated = False
 
     for value in KAM_list:
