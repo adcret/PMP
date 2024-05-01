@@ -184,8 +184,8 @@ def KAM_refine(KAM, grain_mask):
         print(f'KAM mask: percentage in walls {area_ratio * 100:.2f}% with KAM threshold: {KAM_threshold}')
         
         # Adjust KAM_threshold based on the area ratio
-        if 0.69 < area_ratio < 0.71 or area_ratio < 0.65:
-            if area_ratio < 0.65:
+        if 0.69 < area_ratio < 0.71 or area_ratio < 0.15:
+            if area_ratio < 0.69:
                 # Update KAM_threshold to 0.015 if the area ratio is less than 0.65
                 KAM_threshold = 0.01
                 KAM_threshold_updated = True
