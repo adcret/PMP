@@ -169,7 +169,7 @@ def calculate_KAM(col_size, row_size, grain_mask, Chi_Img, Phi_Img, kernelSize):
 
 def KAM_refine(KAM, grain_mask):
     # Create KAM filter and calculate area ratio
-    KAM_list = np.arange(0.001, 0.05, 0.0002).tolist()
+    KAM_list = np.arange(0.015, 0.05, 0.0002).tolist()
     KAM_threshold_updated = False
 
     for value in KAM_list:
@@ -475,6 +475,39 @@ def fit_and_plot_lognorm(data, ax, label):
         ax.set_xlabel('Cell Size ($\mu$m)', fontsize=16)
         ax.set_ylabel('PDF', fontsize=16)
         ax.set_xlim(0, 16)
+        ax.tick_params(axis='x', labelsize=14)
+        ax.tick_params(axis='y', labelsize=14)
+        ax.set_title(label, fontsize=20)
+        ax.legend(['Log-normal distribution', 'Cell Sizes'], fontsize=14)
+    except Exception as e:
+        print(f"Error fitting {label}: {e}")
+        ax.text(0.5, 0.5, 'Error in fitting', horizontalalignment='center', verticalalignment='center', transform=ax.transAxes)
+
+
+def fit_and_plot_lognorm_cluster(data, ax, label):
+    # Remove NaNs and infinite values from data
+    data = np.array(data)
+    data = data[np.isfinite(data)]
+    data = data[data < 10]  # remove outliers
+
+    # Handle empty data or data with insufficient values
+    if len(data) < 10:
+        ax.text(0.5, 0.5, 'Insufficient data', horizontalalignment='center', verticalalignment='center', transform=ax.transAxes)
+        ax.set_title(label)
+        return
+
+    try:
+        # Fit the log-normal distribution to the data
+        params = lognorm.fit(data)
+        shape, loc, scale = params
+        mu = np.log(scale)
+        x = np.linspace(min(data), max(data), 100)
+        pdf = lognorm.pdf(x, *params)
+        ax.hist(data, bins=35, range=(0.5, 8.5), density=True, alpha=0.8)
+        ax.plot(x, pdf, 'r-', lw = 4)
+        ax.set_xlabel('Cluster Size ($\mu$m)', fontsize=16)
+        ax.set_ylabel('PDF', fontsize=16)
+        ax.set_xlim(0.5, 8.5)
         ax.tick_params(axis='x', labelsize=14)
         ax.tick_params(axis='y', labelsize=14)
         ax.set_title(label, fontsize=20)
