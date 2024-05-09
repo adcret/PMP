@@ -169,7 +169,7 @@ def calculate_KAM(col_size, row_size, grain_mask, Chi_Img, Phi_Img, kernelSize):
 
 def KAM_refine(KAM, grain_mask):
     # Create KAM filter and calculate area ratio
-    KAM_list = np.arange(0.015, 0.05, 0.0002).tolist()
+    KAM_list = np.arange(0.006, 0.05, 0.0002).tolist()
     KAM_threshold_updated = False
 
     for value in KAM_list:
@@ -186,7 +186,7 @@ def KAM_refine(KAM, grain_mask):
         # Adjust KAM_threshold based on the area ratio
         if 0.69 < area_ratio < 0.71 or area_ratio < 0.15:
             if area_ratio < 0.69:
-                # Update KAM_threshold to 0.015 if the area ratio is less than 0.65
+                # Update KAM_threshold to 0.01 if the area ratio is less than 0.65
                 KAM_threshold = 0.01
                 KAM_threshold_updated = True
             break
@@ -467,7 +467,8 @@ def fit_and_plot_lognorm(data, ax, label):
         # Fit the log-normal distribution to the data
         params = lognorm.fit(data)
         shape, loc, scale = params
-        mu = np.log(scale)
+        sigma = shape  # This is sigma of the log-normal distribution
+        mu = np.log(scale)  # This is mu of the log-normal distribution
         x = np.linspace(min(data), max(data), 100)
         pdf = lognorm.pdf(x, *params)
         ax.hist(data, bins=35, range=(0, 18), density=True, alpha=0.8)
@@ -479,6 +480,10 @@ def fit_and_plot_lognorm(data, ax, label):
         ax.tick_params(axis='y', labelsize=14)
         ax.set_title(label, fontsize=20)
         ax.legend(['Log-normal distribution', 'Cell Sizes'], fontsize=14)
+
+        print(f"fitting values (µ={mu:.2f}, σ={sigma:.2f})")
+        ks_stat, p_value = kstest(data, 'lognorm', args=(shape, loc, scale))
+        print(f"Kolmogorov-Smirnov test p-value: {p_value:.3f}")
     except Exception as e:
         print(f"Error fitting {label}: {e}")
         ax.text(0.5, 0.5, 'Error in fitting', horizontalalignment='center', verticalalignment='center', transform=ax.transAxes)
@@ -500,7 +505,8 @@ def fit_and_plot_lognorm_cluster(data, ax, label):
         # Fit the log-normal distribution to the data
         params = lognorm.fit(data)
         shape, loc, scale = params
-        mu = np.log(scale)
+        sigma = shape  # This is sigma of the log-normal distribution
+        mu = np.log(scale)  # This is mu of the log-normal distribution
         x = np.linspace(min(data), max(data), 100)
         pdf = lognorm.pdf(x, *params)
         ax.hist(data, bins=35, range=(0.5, 8.5), density=True, alpha=0.8)
@@ -512,14 +518,23 @@ def fit_and_plot_lognorm_cluster(data, ax, label):
         ax.tick_params(axis='y', labelsize=14)
         ax.set_title(label, fontsize=20)
         ax.legend(['Log-normal distribution', 'Cell Sizes'], fontsize=14)
+        print(f"fitting values (mu={mu:.2f}, sigma={sigma:.2f})")
+        ks_stat, p_value = kstest(data, 'lognorm', args=(shape, loc, scale))
+        print(f"Kolmogorov-Smirnov test p-value: {p_value:.3f}")
     except Exception as e:
         print(f"Error fitting {label}: {e}")
         ax.text(0.5, 0.5, 'Error in fitting', horizontalalignment='center', verticalalignment='center', transform=ax.transAxes)
     
 
 
-def fit_and_plot_chi(data, ax, label):
-    # Remove NaNs and infinite values from data
+def fit_and_plot_chi(data, ax, label, save  = False, k_values = None, sigma_values= None):
+
+    if save:
+        if k_values is None:
+            k_values = []
+        if sigma_values is None:
+            sigma_values = []
+
     data = np.array(data)
     data = data[np.isfinite(data)]
     data = data[data > 0.0001]  # remove outliers
@@ -533,6 +548,7 @@ def fit_and_plot_chi(data, ax, label):
     try:
         # Fit the log-normal distribution to the data
         params = chi.fit(data)
+        k, loc, scale = params  # chi distribution parameters
         x = np.linspace(min(data), max(data), 100)
         pdf = chi.pdf(x, *params)
         ax.hist(data, bins=35, density=True, alpha=0.8)
@@ -540,14 +556,26 @@ def fit_and_plot_chi(data, ax, label):
         #mean_size = np.mean(data)
         ax.set_xlabel('Misorientation (°)', fontsize=16)
         ax.set_ylabel('PDF', fontsize=16)
-        ax.set_xlim(0, max(data)+0.1)
+        ax.set_xlim(0, 1.4)
         ax.tick_params(axis='x', labelsize=14)
         ax.tick_params(axis='y', labelsize=14)
         ax.set_title(label, fontsize=20)
         ax.legend(['$\chi$-distribution', 'Misorientations'], fontsize=14)
+
+        print(f"fitting values (k={k:.2f}, sigma={scale:.2f})")
+        if save:
+            k_values.append(k)
+            sigma_values.append(scale)
+
+            return k_values, sigma_values
+        
     except Exception as e:
         print(f"Error fitting {label}: {e}")
         ax.text(0.5, 0.5, 'Error in fitting', horizontalalignment='center', verticalalignment='center', transform=ax.transAxes)
+        if save:
+            return k_values, sigma_values
+    
+
     
 
 def anisotropy(regions):
