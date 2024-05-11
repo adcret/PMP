@@ -543,6 +543,8 @@ def fit_and_plot_chi(data, ax, label, save  = False, k_values = None, sigma_valu
     if len(data) < 10:
         ax.text(0.5, 0.5, 'Insufficient data', horizontalalignment='center', verticalalignment='center', transform=ax.transAxes)
         ax.set_title(label)
+        if save:
+            return k_values, sigma_values        
         return
 
     try:
