@@ -13,7 +13,7 @@ import matplotlib.colors as colors
 import matplotlib.patches as patches
 import matplotlib.gridspec as gridspec
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
-from scipy.stats import norm, lognorm, rayleigh, chi, maxwell, kstest, gamma
+from scipy.stats import norm, lognorm, rayleigh, chi, maxwell, kstest, gamma, weibull_min
 from scipy.optimize import curve_fit
 from rtree import index
 import math
@@ -169,11 +169,12 @@ def calculate_KAM(col_size, row_size, grain_mask, Chi_Img, Phi_Img, kernelSize):
 
 def KAM_refine(KAM, grain_mask):
     # Create KAM filter and calculate area ratio
-    KAM_list = np.arange(0.006, 0.05, 0.0002).tolist()
+    KAM_list = np.arange(0.002, 0.05, 0.0002).tolist()
     KAM_threshold_updated = False
 
     for value in KAM_list:
         KAM_threshold = value
+        
         KAM_filter = np.zeros_like(KAM, dtype=bool)
 
         # Apply the threshold to create the filter
@@ -487,6 +488,44 @@ def fit_and_plot_lognorm(data, ax, label):
     except Exception as e:
         print(f"Error fitting {label}: {e}")
         ax.text(0.5, 0.5, 'Error in fitting', horizontalalignment='center', verticalalignment='center', transform=ax.transAxes)
+
+
+def fit_and_plot_distribution(dist, data, ax, label):
+    # Remove NaNs and infinite values from data as well as values above 25 microns
+    data = np.array(data)
+    data = data[np.isfinite(data)]
+    data = data[data < 25]  # remove outliers
+
+    # Ensure data is non-negative for certain distributions
+    if dist in [lognorm, weibull_min, gamma]:
+        data = data[data > 0]
+
+    # Handle empty data or data with insufficient values
+    if len(data) < 10:
+        ax.text(0.5, 0.5, 'Insufficient data', horizontalalignment='center', verticalalignment='center', transform=ax.transAxes)
+        ax.set_title(label)
+        return
+
+    try:
+        # Fit the distribution to the data
+        params = dist.fit(data)
+        x = np.linspace(min(data), max(data), 100)
+        pdf = dist.pdf(x, *params)
+        ax.hist(data, bins=35, range=(0, 18), density=True, alpha=0.8)
+        ax.plot(x, pdf, 'r-', lw=4)
+        ax.set_xlabel('Cell Size ($\mu$m)', fontsize=16)
+        ax.set_ylabel('PDF', fontsize=16)
+        ax.set_xlim(0, 16)
+        ax.tick_params(axis='x', labelsize=14)
+        ax.tick_params(axis='y', labelsize=14)
+        ax.set_title(label, fontsize=20)
+        ks_stat, p_value = kstest(data, dist.cdf, args=params)
+        ax.text(0.45, 0.65, f'p-value={p_value:.2e}', transform=ax.transAxes, fontsize=14)
+    except Exception as e:
+        print(f"Error fitting {label}: {e}")
+        ax.text(0.5, 0.5, 'Error in fitting', horizontalalignment='center', verticalalignment='center', transform=ax.transAxes)
+
+
 
 
 def fit_and_plot_lognorm_cluster(data, ax, label):

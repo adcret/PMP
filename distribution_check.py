@@ -101,8 +101,8 @@ def process_image(KAM_threshold, KAM_filter, Mosa_Img, mosa, pixel_x, pixel_y):
 
 
 
-for _ in range(len(com_chi)):
-    chi_file = fabio.open(path + com_chi[_])
+for _ in range(1):
+    chi_file = fabio.open(path + com_chi[6])
     A = chi_file.data
     row_size, col_size = A.shape
     B1 = A.T
@@ -111,10 +111,10 @@ for _ in range(len(com_chi)):
     ave_chi = np.nanmean(A)
     Chi_Img = B - ave_chi
     # Read in PHI COM data
-    phi_file = fabio.open(path + com_phi[_])
+    phi_file = fabio.open(path + com_phi[6])
     A = phi_file.data
-    print(com_phi[_])
-    print(com_chi[_])
+    print(com_phi[6])
+    print(com_chi[6])
 
     # Rotate and mirror for Phi data
     B1 = A.T
@@ -179,8 +179,8 @@ for _ in range(len(com_chi)):
                 jEnd = min(jj + kernelSize, row_size - 1)
 
                 # Calculate the kernel difference
-                kernel_diff = np.abs(Chi_Img[iStart:iEnd+1, jStart:jEnd+1] - Chi_Img[ii, jj]) + \
-                            np.abs(Phi_Img[iStart:iEnd+1, jStart:jEnd+1] - Phi_Img[ii, jj])
+                kernel_diff = np.sqrt(np.abs(Chi_Img[iStart:iEnd+1, jStart:jEnd+1] - Chi_Img[ii, jj])**2 + \
+                            np.abs(Phi_Img[iStart:iEnd+1, jStart:jEnd+1] - Phi_Img[ii, jj])**2)
                 nr_pixels_ROI = (iEnd - iStart + 1) * (jEnd - jStart + 1)
 
                 # Store the average misorientation angle in the KAM map
@@ -196,7 +196,7 @@ for _ in range(len(com_chi)):
     sizes = []
     sizes1 = []
     for value in KAM_list:
-        KAM_threshold = 0.041
+        KAM_threshold = 0.034
         KAM_filter = np.zeros_like(KAM, dtype=bool)
 
         # Apply the threshold to create the filter
@@ -209,7 +209,7 @@ for _ in range(len(com_chi)):
         if 0.69 < area_ratio < 0.72 or area_ratio < 0.65:
             if area_ratio < 0.65:
                 # Update KAM_threshold and recompute KAM_filter
-                KAM_threshold = 0.041
+                KAM_threshold = 0.034
                 KAM_filter = np.zeros_like(KAM, dtype=bool)
                 KAM_filter[grain_mask & (KAM > KAM_threshold)] = True
 
@@ -318,14 +318,14 @@ plt.plot(av_cell1, 'o')
 def fit_and_plot_distribution(dist, data, ax, label):
     # Remove NaNs and infinite values from data as well as values above 25 microns
     data = np.array(data)
-    data = data[np.isfinite(data) & (data < 25)]
+    data = data[np.isfinite(data) & (data < 10)]
 
     # Ensure data is non-negative for certain distributions
     if dist in [lognorm, weibull_min, gamma]:
         data = data[data > 0]
 
     # Handle empty data or data with insufficient values
-    if len(data) < 20:
+    if len(data) < 10:
         ax.text(0.5, 0.5, 'Insufficient data', horizontalalignment='center', verticalalignment='center', transform=ax.transAxes)
         ax.set_title(label)
         return
@@ -334,14 +334,14 @@ def fit_and_plot_distribution(dist, data, ax, label):
         params = dist.fit(data)
         x = np.linspace(min(data), max(data), 100)
         pdf = dist.pdf(x, *params)
-        ax.hist(data, bins=50, range=(0, 25), density=True, alpha=0.9)
+        ax.hist(data, bins=35, range=(0, 16), density=True, alpha=0.8)
         ax.plot(x, pdf, 'r-')
         # Perform the Kolmogorov-Smirnov test
         D, p_value = kstest(data, lambda x: dist.cdf(x, *params))
 
         # Annotate the plot with the KS test result
-        ax.text(0.3, 0.75, f'Kolmogorov-Smirnov Test\nD={D:.4e}\nP={p_value:.4e}', transform=ax.transAxes, fontsize=10)
-        ax.set_xlim(0, 25)
+        ax.text(0.3, 0.75, f'p-value={p_value:.4e}', transform=ax.transAxes, fontsize=14)
+        ax.set_xlim(0, 16)
         ax.set_title(label, fontsize=16)
         ax.set_xlabel('Cell size (mu)')
         ax.set_ylabel('PDF')
@@ -353,7 +353,7 @@ def fit_and_plot_distribution(dist, data, ax, label):
 # Loop over each dataset in area_sizes1
 for i, dataset in enumerate(area_sizes1):
     # Create a new figure for each dataset
-    fig, axs = plt.subplots(1, 5, figsize=(20, 5))  # One row, five columns for each distribution
+    fig, axs = plt.subplots(1, 5, figsize=(20, 5))  
 
     # Fit and plot each distribution for the current dataset
     fit_and_plot_distribution(chi, dataset, axs[0], 'Chi Distribution')
