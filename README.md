@@ -1,4 +1,4 @@
-# Python Analysis Tool
+# DFXM cell refinement python analysis tool
 
 This repository contains a set of Python scripts and Jupyter notebooks for image processing and cell refinement analysis. The tools provided are designed to facilitate the analysis and visualization of image data.
 
