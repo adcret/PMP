@@ -29,26 +29,18 @@ pip install numpy scipy matplotlib pandas scikit-image jupyter
 
 ### Image Processing
 
-The `image_processor.py` script provides functions for processing images. Here’s an example of how to use it:
+The `image_processor.py` script provides functions for processing images.
 
 ```python
-from image_processor import process_image
-
-# Load and process an image
-image_path = 'path/to/your/image.jpg'
-processed_image = process_image(image_path)
+from image_processor import *
 ```
 
 ### Scanning Functions
 
-The `scan_functions.py` script includes various functions for scanning and analyzing images. Here’s an example of how to use it:
+The `scan_functions.py` script includes various functions for scanning and analyzing images.
 
 ```python
-from scan_functions import scan_image
-
-# Scan and analyze an image
-image_path = 'path/to/your/image.jpg'
-scan_results = scan_image(image_path)
+from scan_functions import *
 ```
 
 ### Cell Refinement Analysis
@@ -63,7 +55,7 @@ jupyter notebook cell_refinement_analysis.ipynb
 
 2. Follow the steps outlined in the notebook to perform the analysis.
 
-   The data can be founf in the data folder.
+   The data can be found in the data folder.
 
 ## Contributing
 
