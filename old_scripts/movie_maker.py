@@ -13,7 +13,7 @@ def create_transition(start_img, end_img, steps=2):
         transition_images.append(blended_img.astype(np.uint8))
     return transition_images
 
-image_dir = r'C:\Users\adacre\OneDrive - Danmarks Tekniske Universitet\Documents\DTU_Project\data\Figures\First_sample_of_PhD\videos\cells'
+image_dir = r'C:\Users\adacre\OneDrive - Danmarks Tekniske Universitet\Documents\DTU_Project\data\Figures\First_sample_of_PhD\videos\FWHM_nokam'
 image_files = [os.path.join(image_dir, img) for img in sorted(os.listdir(image_dir)) if img.endswith('.png')]
 output_video_path = os.path.join(image_dir, 'output_video_with_transitions.mp4')
 

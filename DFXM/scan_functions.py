@@ -187,8 +187,7 @@ def KAM_refine(KAM, grain_mask):
         # Adjust KAM_threshold based on the area ratio
         if 0.69 < area_ratio < 0.71 or area_ratio < 0.15:
             if area_ratio < 0.69:
-                # Update KAM_threshold to 0.01 if the area ratio is less than 0.65
-                KAM_threshold = 0.01
+                KAM_threshold = 0.015
                 KAM_threshold_updated = True
             break
 
@@ -532,7 +531,8 @@ def fit_and_plot_lognorm_cluster(data, ax, label):
     # Remove NaNs and infinite values from data
     data = np.array(data)
     data = data[np.isfinite(data)]
-    data = data[data < 10]  # remove outliers
+    data = data[data < 15] 
+    data = data[data > 0.5] 
 
     # Handle empty data or data with insufficient values
     if len(data) < 10:
@@ -544,15 +544,15 @@ def fit_and_plot_lognorm_cluster(data, ax, label):
         # Fit the log-normal distribution to the data
         params = lognorm.fit(data)
         shape, loc, scale = params
-        sigma = shape  # This is sigma of the log-normal distribution
-        mu = np.log(scale)  # This is mu of the log-normal distribution
-        x = np.linspace(min(data), max(data), 100)
+        sigma = shape 
+        mu = np.log(scale)  
+        x = np.linspace(min(data)-0.1, max(data), 100)
         pdf = lognorm.pdf(x, *params)
-        ax.hist(data, bins=35, range=(0.5, 8.5), density=True, alpha=0.8)
+        ax.hist(data, bins=40, range=(0.5, 8.5), density=True, alpha=0.8)
         ax.plot(x, pdf, 'r-', lw = 4)
         ax.set_xlabel('Cluster Size ($\mu$m)', fontsize=16)
         ax.set_ylabel('PDF', fontsize=16)
-        ax.set_xlim(0.5, 8.5)
+        ax.set_xlim(1.0, 8.5)
         ax.tick_params(axis='x', labelsize=14)
         ax.tick_params(axis='y', labelsize=14)
         ax.set_title(label, fontsize=20)
